@@ -1,23 +1,23 @@
+// About.js
 import React from 'react';
 import { Container, Typography, Box } from '@mui/material';
 
 export default function About() {
   return (
-    <Container sx={{ mt: 8, mb: 8 }}>
-      <Typography variant="h3" color="green" gutterBottom fontWeight="bold">
-        About Trip Sharer
+    <Container maxWidth="md" sx={{ mt: 6, mb: 6 }}>
+      <Typography variant="h3" gutterBottom fontWeight="bold" color="primary">
+        About Us
       </Typography>
-      <Typography variant="body1" sx={{ mb: 3, fontSize: '1.1rem', lineHeight: 1.7 }}>
-        Trip Sharer is committed to creating a sustainable future by enabling people to share rides,
-        reduce traffic congestion, and lower carbon emissions. Our platform connects travelers,
-        making transportation affordable, eco-friendly, and community-oriented.
-      </Typography>
-      <Box sx={{ bgcolor: '#E8F5E9', p: 3, borderRadius: 2 }}>
-        <Typography variant="h5" gutterBottom>
-          Our Mission
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="body1" paragraph fontSize={18} color="text.primary" lineHeight={1.6}>
+          Welcome to <strong>sharo</strong>! We connect travelers offering seats with people looking for rides,
+          aiming to make travel easy, affordable, and environmentally friendly.
         </Typography>
-        <Typography variant="body1" sx={{ fontSize: '1rem', lineHeight: 1.6 }}>
-          To revolutionize urban and intercity mobility with a user-friendly, secure, and sustainable ride-sharing platform.
+        <Typography variant="body1" paragraph fontSize={18} color="text.primary" lineHeight={1.6}>
+          Our platform fosters community and sustainability by helping people share trips and reduce travel costs.
+        </Typography>
+        <Typography variant="body1" paragraph fontSize={18} color="text.primary" lineHeight={1.6}>
+          Whether you want to offer a ride or find one, we provide a safe and trusted space to connect.
         </Typography>
       </Box>
     </Container>

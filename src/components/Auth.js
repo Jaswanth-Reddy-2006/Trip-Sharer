@@ -1,46 +1,27 @@
 import React, { useState } from 'react';
-import { auth, googleProvider } from '../firebase';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-} from 'firebase/auth';
-import {
-  Container,
-  Typography,
-  TextField,
-  Button,
-  Box,
-  Alert,
-  Stack,
-  Divider,
-  CircularProgress,
-} from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth } from '../firebase';
+import { Container, TextField, Button, Typography, Box, Divider } from '@mui/material';
 
-export default function Auth({ onLogin }) {
-  const [isLogin, setIsLogin] = useState(true);
+const googleProvider = new GoogleAuthProvider();
+
+export default function Auth() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const toggleMode = () => {
-    setError('');
-    setIsLogin(!isLogin);
-  };
+  if (auth.currentUser) return <Navigate to="/" replace />;
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-      }
-      onLogin();
+      await signInWithEmailAndPassword(auth, email, password);
+      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -53,7 +34,7 @@ export default function Auth({ onLogin }) {
     setLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
-      onLogin();
+      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -62,82 +43,18 @@ export default function Auth({ onLogin }) {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ mt: 8, mb: 8 }}>
-      <Typography variant="h4" color="green" mb={3} align="center" fontWeight="bold">
-        {isLogin ? 'Welcome Back' : 'Create an Account'}
-      </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2, fontSize: '0.9rem' }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <TextField
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          fullWidth
-          margin="normal"
-          required
-          disabled={loading}
-        />
-        <TextField
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          fullWidth
-          margin="normal"
-          required
-          disabled={loading}
-        />
-        <Button
-          variant="contained"
-          fullWidth
-          type="submit"
-          disabled={loading}
-          size="large"
-          sx={{ mt: 3, mb: 2, fontWeight: 'bold', fontSize: '1rem' }}
-        >
-          {loading ? <CircularProgress size={24} color="inherit" /> : isLogin ? 'Login' : 'Sign Up'}
-        </Button>
+    <Container maxWidth="xs" sx={{ mt: 8 }}>
+      <Typography variant="h5" gutterBottom>Login</Typography>
+      <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" disabled={loading} />
+        <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" disabled={loading} />
+        {error && <Typography color="error">{error}</Typography>}
+        <Button type="submit" variant="contained" color="primary" disabled={loading}>{loading ? 'Logging in...' : 'Log In'}</Button>
       </Box>
-
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        justifyContent="center"
-        sx={{ my: 3 }}
-      >
-        <Divider sx={{ flexGrow: 1 }} />
-        <Typography color="text.secondary" sx={{ mx: 1, fontSize: '0.9rem' }}>
-          OR
-        </Typography>
-        <Divider sx={{ flexGrow: 1 }} />
-      </Stack>
-
-      <Button
-        variant="outlined"
-        fullWidth
-        startIcon={<GoogleIcon />}
-        onClick={handleGoogleLogin}
-        disabled={loading}
-        sx={{ fontWeight: 'bold', fontSize: '1rem' }}
-      >
-        Continue with Google
+      <Divider sx={{ my: 3 }}>OR</Divider>
+      <Button variant="outlined" fullWidth onClick={handleGoogleLogin} disabled={loading} sx={{ textTransform: 'none' }}>
+        Login with Google
       </Button>
-
-      <Box sx={{ mt: 3, textAlign: 'center' }}>
-        <Button onClick={toggleMode} disabled={loading} sx={{ fontWeight: 'bold' }}>
-          {isLogin
-            ? "Don't have an account? Sign Up"
-            : 'Already have an account? Login'}
-        </Button>
-      </Box>
     </Container>
   );
 }

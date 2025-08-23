@@ -1,19 +1,51 @@
-import React, { useState } from 'react';
-import { Container, Typography, TextField, Button, MenuItem, Alert } from '@mui/material';
-import { db, auth } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import React, { useEffect, useState } from "react";
+import {
+  Container,
+  Typography,
+  TextField,
+  Button,
+  MenuItem,
+  Box,
+  Alert,
+  CircularProgress,
+} from "@mui/material";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
-export default function CompleteProfile({ onComplete }) {
+const genders = ["Male", "Female", "Other"];
+
+export default function CompleteProfile() {
+  const navigate = useNavigate();
+  const user = auth.currentUser;
+
   const [form, setForm] = useState({
-    name: '',
-    username: '',
-    dob: '',
-    gender: '',
+    name: "",
+    gender: "",
+    phone: "",
   });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const genders = ['Male', 'Female', 'Other'];
+  useEffect(() => {
+    async function fetchProfile() {
+      if (!user) return;
+      setLoading(true);
+      const userRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(userRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setForm({
+          name: data.name || "",
+          gender: data.gender || "",
+          phone: data.phone || "",
+        });
+      }
+      setLoading(false);
+    }
+    fetchProfile();
+  }, [user]);
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -21,77 +53,67 @@ export default function CompleteProfile({ onComplete }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-
-    if (!form.name || !form.username || !form.dob || !form.gender) {
-      setError('Please fill in all fields.');
+    setError("");
+    // Basic validation
+    if (!form.name || !form.gender || !form.phone) {
+      setError("Please fill in all required fields.");
       return;
     }
-
-    setLoading(true);
+    setSaving(true);
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Not authenticated');
-
       await setDoc(
-        doc(db, 'users', user.uid),
+        doc(db, "users", user.uid),
         {
-          name: form.name.trim(),
-          username: form.username.trim(),
-          dob: form.dob,
-          gender: form.gender,
+          ...form,
           profileComplete: true,
           createdAt: new Date(),
+          uid: user.uid, // Immutable ID token
         },
         { merge: true }
       );
-
-      onComplete();
+      navigate("/");
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  if (loading) {
+    return (
+      <Container sx={{ mt: 6, textAlign: "center" }}>
+        <CircularProgress />
+        <Typography>Loading profile data...</Typography>
+      </Container>
+    );
+  }
+
   return (
-    <Container maxWidth="xs" sx={{ mt: 8 }}>
+    <Container maxWidth="sm" sx={{ mt: 6 }}>
       <Typography variant="h5" gutterBottom>
         Complete Your Profile
       </Typography>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <form onSubmit={handleSubmit}>
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+        User ID: {user.uid}
+      </Typography>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+      >
         <TextField
           label="Full Name"
           name="name"
           value={form.name}
           onChange={handleChange}
-          fullWidth
-          margin="normal"
           required
-          disabled={loading}
-        />
-        <TextField
-          label="Username"
-          name="username"
-          value={form.username}
-          onChange={handleChange}
           fullWidth
-          margin="normal"
-          required
-          disabled={loading}
-        />
-        <TextField
-          label="Date of Birth"
-          name="dob"
-          type="date"
-          value={form.dob}
-          onChange={handleChange}
-          fullWidth
-          margin="normal"
-          required
-          InputLabelProps={{ shrink: true }}
-          disabled={loading}
         />
         <TextField
           select
@@ -99,29 +121,30 @@ export default function CompleteProfile({ onComplete }) {
           name="gender"
           value={form.gender}
           onChange={handleChange}
-          fullWidth
-          margin="normal"
           required
-          disabled={loading}
+          fullWidth
         >
-          {genders.map((g) => (
-            <MenuItem key={g} value={g}>
-              {g}
+          {genders.map((option) => (
+            <MenuItem key={option} value={option}>
+              {option}
             </MenuItem>
           ))}
         </TextField>
-
-        <Button
-          type="submit"
-          variant="contained"
-          color="primary"
+        <TextField
+          label="Phone Number"
+          name="phone"
+          value={form.phone}
+          onChange={handleChange}
+          required
           fullWidth
-          disabled={loading}
-          sx={{ mt: 2 }}
-        >
-          {loading ? 'Saving...' : 'Save Profile'}
+          type="tel"
+          inputProps={{ pattern: "[0-9]{10,15}" }}
+          helperText="Enter valid phone number"
+        />
+        <Button type="submit" variant="contained" color="primary" disabled={saving}>
+          {saving ? "Saving..." : "Save Profile"}
         </Button>
-      </form>
+      </Box>
     </Container>
   );
 }

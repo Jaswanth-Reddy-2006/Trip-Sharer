@@ -1,132 +1,118 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Container,
-  Typography,
-  Card,
-  CardContent,
-  Grid,
-  Button,
-  Box,
-  CircularProgress,
-  Alert,
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs } from 'firebase/firestore';
+import { Container, Grid, Card, CardContent, Typography, IconButton, Menu, MenuItem, Box, Tooltip, Button } from '@mui/material';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 
-export default function Trips({ onNavigate }) {
+export default function Trips({ onNavigate, user }) {
   const [trips, setTrips] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedTrip, setSelectedTrip] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'trips'), orderBy('dateTime', 'asc'));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const tripsArray = [];
-        querySnapshot.forEach((doc) => {
-          tripsArray.push({ id: doc.id, ...doc.data() });
-        });
-        setTrips(tripsArray);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        setError('Failed to fetch trips: ' + err.message);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
+    async function fetchTrips() {
+      const tripsRef = collection(db, 'trips');
+      const q = query(tripsRef);
+      const snapshot = await getDocs(q);
+      const data = [];
+      snapshot.forEach((doc) => data.push({ id: doc.id, ...doc.data() }));
+      setTrips(data);
+    }
+    fetchTrips();
   }, []);
 
-  if (loading)
-    return (
-      <Box sx={{ textAlign: 'center', marginTop: 10 }}>
-        <CircularProgress />
-        <Typography>Loading trips...</Typography>
-      </Box>
-    );
-  if (error)
-    return (
-      <Container sx={{ marginTop: 8 }}>
-        <Alert severity="error">{error}</Alert>
-        <Button onClick={() => onNavigate('home')} variant="outlined" sx={{ mt: 2 }}>
-          Back to Home
-        </Button>
-      </Container>
-    );
+  const handleMenuOpen = (event, trip) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedTrip(trip);
+  };
 
-  if (trips.length === 0)
-    return (
-      <Container sx={{ marginTop: 8, textAlign: 'center' }}>
-        <Typography variant="h5" color="green" gutterBottom>
-          No trips found
-        </Typography>
-        <Button onClick={() => onNavigate('create')} variant="contained" color="success" sx={{ mr: 2 }}>
-          Post a Trip
-        </Button>
-        <Button onClick={() => onNavigate('home')} variant="outlined">
-          Back to Home
-        </Button>
-      </Container>
-    );
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+    setSelectedTrip(null);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'N/A';
+    if (date.seconds) return new Date(date.seconds * 1000).toLocaleDateString();
+    if (typeof date === 'string' || date instanceof Date) return new Date(date).toLocaleDateString();
+    return 'Invalid Date';
+  };
+
+  const formatTime = (date) => {
+    if (!date) return 'N/A';
+    if (date.seconds) return new Date(date.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (typeof date === 'string' || date instanceof Date) return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return 'Invalid Time';
+  };
 
   return (
-    <Container sx={{ marginTop: 8 }}>
-      <Typography variant="h4" gutterBottom color="green">
+    <Container sx={{ mt: 4, maxWidth: 'lg' }}>
+      <Typography variant="h4" gutterBottom color="primary" fontWeight="bold">
         Available Trips
       </Typography>
-      <Grid container spacing={3}>
-        {trips.map((trip) => {
-          const tripDate = trip.dateTime?.toDate();
-          const formattedDate = tripDate ? tripDate.toLocaleDateString() : 'N/A';
-          const formattedTime = tripDate ? tripDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+      <Grid container spacing={4}>
+        {trips.map((trip) => (
+          <Grid item xs={12} sm={6} md={4} key={trip.id}>
+            <Card sx={{
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: 4,
+              borderRadius: 3,
+              cursor: 'default',
+              position: 'relative',
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              '&:hover': { transform: 'scale(1.03)', boxShadow: 8 },
+            }}>
+              <CardContent sx={{ flexGrow: 1 }}>
+                <Typography variant="subtitle1" fontWeight="bold" color="primary">From: {trip.startLocation || 'Unknown'}</Typography>
+                <Typography variant="subtitle1" fontWeight="bold" color="primary">To: {trip.endLocation || 'Unknown'}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Date: {formatDate(trip.date)}</Typography>
+                <Typography variant="body2" color="text.secondary">Time: {formatTime(trip.date)}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Vehicle: {trip.vehicleType || 'Unknown'}</Typography>
+              </CardContent>
 
-          return (
-            <Grid item key={trip.id} xs={12} sm={6} md={4}>
-              <Card
-                variant="outlined"
-                sx={{
-                  minHeight: 180,
-                  boxShadow: 2,
-                  transition: 'transform 0.3s',
-                  '&:hover': {
-                    boxShadow: 6,
-                    transform: 'scale(1.03)',
-                  },
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" fontWeight="bold">
-                    {trip.from} → {trip.to}
-                  </Typography>
-                  <Typography>Date: {formattedDate}</Typography>
-                  <Typography>Time: {formattedTime}</Typography>
-                  <Typography>Vehicle: {trip.vehicleType}</Typography>
-                  {trip.vehicleType === 'Car' && <Typography>Seats Available: {trip.seats}</Typography>}
-                </CardContent>
-                <Box sx={{ textAlign: 'center', mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pb: 2 }}>
+                <Tooltip title={trip.uploaderName ? `Uploaded by ${trip.uploaderName}` : 'Uploader Unknown'}>
                   <Button
+                    size="small"
                     variant="contained"
-                    color="success"
-                    onClick={() => alert(`Request to join trip coming soon!`)}
-                    sx={{ fontWeight: 'bold' }}
+                    onClick={() => {
+                      if (user) onNavigate(`/book-trip/${trip.id}`);
+                      else alert('Please log in to book this trip.');
+                    }}
+                    sx={{ borderRadius: '20px', textTransform: 'none' }}
                   >
-                    Request to Join
+                    Book
                   </Button>
-                </Box>
-              </Card>
-            </Grid>
-          );
-        })}
+                </Tooltip>
+                <IconButton size="small" onClick={(e) => handleMenuOpen(e, trip)}><MoreVertIcon /></IconButton>
+              </Box>
+            </Card>
+          </Grid>
+        ))}
       </Grid>
-      <Box sx={{ mt: 3, textAlign: 'center' }}>
-        <Button onClick={() => onNavigate('home')} variant="outlined" sx={{ fontWeight: 'bold' }}>
-          Back to Home
-        </Button>
-      </Box>
+
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{ sx: { maxWidth: 300 } }}>
+        {selectedTrip && (
+          <>
+            <MenuItem disabled><Typography fontWeight="bold">Complete Trip Details</Typography></MenuItem>
+            <MenuItem>From: {selectedTrip.startLocation || 'Unknown'}</MenuItem>
+            <MenuItem>To: {selectedTrip.endLocation || 'Unknown'}</MenuItem>
+            <MenuItem>Date: {formatDate(selectedTrip.date)}</MenuItem>
+            <MenuItem>Time: {formatTime(selectedTrip.date)}</MenuItem>
+            <MenuItem>Vehicle: {selectedTrip.vehicleType || 'Unknown'}</MenuItem>
+            <MenuItem>Seats Available: {selectedTrip.seatsAvailable ?? 'N/A'}</MenuItem>
+            <MenuItem>Description: {selectedTrip.description || 'No description'}</MenuItem>
+            <MenuItem>Vehicle Number: {selectedTrip.vehicleNumber || 'N/A'}</MenuItem>
+            <MenuItem>License Number: {selectedTrip.licenseNumber || 'N/A'}</MenuItem>
+            <MenuItem>Uploaded by: {selectedTrip.uploaderName || 'Unknown'}</MenuItem>
+          </>
+        )}
+      </Menu>
     </Container>
   );
 }

@@ -1,131 +1,137 @@
 import React, { useState } from 'react';
-import { Container, Typography, TextField, Button, Box, MenuItem, CircularProgress, Alert } from '@mui/material';
-import { useSnackbar } from 'notistack';
+import { Navigate } from 'react-router-dom';
+import { collection, addDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import {
+  Container,
+  TextField,
+  Button,
+  Typography,
+  Box,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+} from '@mui/material';
 
-export default function CreateTrip({ onNavigate }) {
-  const { enqueueSnackbar } = useSnackbar();
-
-  const [form, setForm] = useState({
-    from: '',
-    to: '',
+export default function CreateTrip({ onNavigate, user }) {
+  const [formData, setFormData] = useState({
+    startLocation: '',
+    endLocation: '',
     date: '',
     time: '',
-    vehicleType: 'Car',
-    seats: 1,
+    vehicleType: '',
+    description: '',
+    seatsAvailable: '',
     vehicleNumber: '',
-    drivingLicenseNumber: '',
-    rcNumber: '',
+    licenseNumber: '',
   });
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleChange = (e) => {
+  if (!user) return <Navigate to="/auth" replace />;
+
+  const vehicleNumberPattern = /^[A-Z]{2}\d{2}[A-Z]{2}\d{4}$/;
+  const licenseNumberPattern = /^DL[-\s]?[A-Z0-9]{13}$/i;
+
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-      ...(name === 'vehicleType' && value === '2-Wheeler' ? { seats: '' } : {}),
-    }));
+    const val = (name === 'vehicleNumber' || name === 'licenseNumber') ? value.toUpperCase() : value;
+    setFormData((prev) => ({ ...prev, [name]: val }));
+
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const requiredFields = ['startLocation', 'endLocation', 'date', 'time', 'vehicleType', 'seatsAvailable', 'vehicleNumber', 'licenseNumber'];
+    const newErrors = {};
+    requiredFields.forEach((field) => {
+      if (!formData[field] || formData[field].trim() === '') newErrors[field] = `Please fill in the ${field.replace(/([A-Z])/g, ' $1').toLowerCase()}.`;
+    });
+
+    if (formData.vehicleNumber && !vehicleNumberPattern.test(formData.vehicleNumber)) newErrors.vehicleNumber = 'Vehicle number must be in format TS08HD2006.';
+    if (formData.licenseNumber) {
+      const lic = formData.licenseNumber;
+      if (lic.length !== 16) newErrors.licenseNumber = 'License number must be exactly 16 chars including space or hyphen.';
+      else if (!licenseNumberPattern.test(lic)) newErrors.licenseNumber = "License number must be like 'DL-1420110012345' or 'DL14 20110012345'.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-
-    if (!form.from || !form.to || !form.date || !form.time) {
-      setError('Please fill in all required fields.');
+    if (!validateForm()) {
+      setTimeout(() => setErrors({}), 3000);
       return;
     }
-    if (form.vehicleType === 'Car' && (!form.seats || form.seats < 1 || form.seats > 3)) {
-      setError('Seats available must be between 1 and 3 for cars.');
-      return;
-    }
-    if (!form.vehicleNumber || !form.drivingLicenseNumber || !form.rcNumber) {
-      setError('Please enter vehicle number, driving license number, and RC number.');
-      return;
-    }
-
-    setLoading(true);
-
+    setSubmitting(true);
     try {
-      const dateTime = new Date(`${form.date}T${form.time}`);
-      const user = auth.currentUser;
-
+      const combinedDateTime = new Date(`${formData.date}T${formData.time}`);
       await addDoc(collection(db, 'trips'), {
-        from: form.from,
-        to: form.to,
-        vehicleType: form.vehicleType,
-        seats: form.vehicleType === 'Car' ? Number(form.seats) : null,
-        vehicleNumber: form.vehicleNumber,
-        drivingLicenseNumber: form.drivingLicenseNumber,
-        rcNumber: form.rcNumber,
-        dateTime: Timestamp.fromDate(dateTime),
-        createdAt: Timestamp.now(),
-        ownerId: user.uid,
+        startLocation: formData.startLocation.trim(),
+        endLocation: formData.endLocation.trim(),
+        date: combinedDateTime,
+        vehicleType: formData.vehicleType,
+        description: formData.description.trim(),
+        seatsAvailable: Number(formData.seatsAvailable),
+        vehicleNumber: formData.vehicleNumber.trim(),
+        licenseNumber: formData.licenseNumber.trim(),
+        uploaderId: auth.currentUser.uid,
+        uploaderName: auth.currentUser.displayName || auth.currentUser.email || 'Anonymous',
       });
-
-      enqueueSnackbar('Trip created successfully!', { variant: 'success' });
-      onNavigate('home');
-    } catch (err) {
-      setError('Failed to create trip: ' + err.message);
-      enqueueSnackbar('Failed to create trip: ' + err.message, { variant: 'error' });
+      setFormData({
+        startLocation: '',
+        endLocation: '',
+        date: '',
+        time: '',
+        vehicleType: '',
+        description: '',
+        seatsAvailable: '',
+        vehicleNumber: '',
+        licenseNumber: '',
+      });
+      onNavigate('/');
+    } catch (error) {
+      alert('Failed to create trip. Try again.');
+      console.error(error);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <Container sx={{ marginTop: 8, maxWidth: 600 }}>
-      <Typography variant="h4" gutterBottom color="green" fontWeight="bold">
-        Post a New Trip
-      </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleSubmit} noValidate>
-        <TextField label="From" name="from" fullWidth value={form.from} onChange={handleChange} required margin="normal" />
-        <TextField label="To" name="to" fullWidth value={form.to} onChange={handleChange} required margin="normal" />
-        <TextField label="Date" name="date" type="date" fullWidth value={form.date} onChange={handleChange} required margin="normal" InputLabelProps={{ shrink: true }} />
-        <TextField label="Time" name="time" type="time" fullWidth value={form.time} onChange={handleChange} required margin="normal" InputLabelProps={{ shrink: true }} />
-
-        <TextField select label="Vehicle Type" name="vehicleType" value={form.vehicleType} onChange={handleChange} fullWidth margin="normal">
-          <MenuItem value="Car">Car</MenuItem>
-          <MenuItem value="2-Wheeler">2-Wheeler</MenuItem>
-        </TextField>
-
-        {form.vehicleType === 'Car' && (
-          <TextField
-            label="Seats Available"
-            name="seats"
-            type="number"
-            value={form.seats}
-            onChange={handleChange}
-            fullWidth
-            margin="normal"
-            inputProps={{ min: 1, max: 3 }}
-            required
-          />
-        )}
-
-        <TextField label="Vehicle Number" name="vehicleNumber" value={form.vehicleNumber} onChange={handleChange} fullWidth required margin="normal" />
-        <TextField label="Driving License Number" name="drivingLicenseNumber" value={form.drivingLicenseNumber} onChange={handleChange} fullWidth required margin="normal" />
-        <TextField label="RC Number" name="rcNumber" value={form.rcNumber} onChange={handleChange} fullWidth required margin="normal" />
-
-        <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-          <Button type="submit" variant="contained" color="success" disabled={loading} sx={{ fontWeight: 'bold', flexGrow: 1 }}>
-            {loading ? 'Posting...' : 'Post Trip'}
-          </Button>
-          <Button variant="outlined" color="inherit" sx={{ fontWeight: 'bold', flexGrow: 1 }} onClick={() => onNavigate('home')} disabled={loading}>
-            Cancel
-          </Button>
+    <Container maxWidth="sm" sx={{ mt: 4, mb: 6 }}>
+      <Typography variant="h5" gutterBottom>Create New Trip</Typography>
+      <Box component="form" onSubmit={handleSubmit} noValidate sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TextField label="Start Location" name="startLocation" value={formData.startLocation} onChange={handleInputChange} error={!!errors.startLocation} helperText={errors.startLocation || ''} required />
+        <TextField label="End Location" name="endLocation" value={formData.endLocation} onChange={handleInputChange} error={!!errors.endLocation} helperText={errors.endLocation || ''} required />
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <TextField label="Date" type="date" name="date" value={formData.date} onChange={handleInputChange} error={!!errors.date} helperText={errors.date || ''} InputLabelProps={{ shrink: true }} inputProps={{ min: new Date().toISOString().split('T')[0], style: { cursor: 'pointer' } }} required sx={{ flex: 1 }} />
+          <TextField label="Time" type="time" name="time" value={formData.time} onChange={handleInputChange} error={!!errors.time} helperText={errors.time || ''} InputLabelProps={{ shrink: true }} required sx={{ flex: 1, cursor: 'pointer' }} />
         </Box>
+        <FormControl fullWidth error={!!errors.vehicleType}>
+          <InputLabel id="vehicle-type-label" required>Vehicle Type</InputLabel>
+          <Select labelId="vehicle-type-label" id="vehicleType" name="vehicleType" value={formData.vehicleType} label="Vehicle Type *" onChange={handleInputChange} required>
+            <MenuItem value="Bike">Bike</MenuItem>
+            <MenuItem value="Scooter">Scooter</MenuItem>
+            <MenuItem value="Car">Car</MenuItem>
+          </Select>
+          {errors.vehicleType && <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>{errors.vehicleType}</Typography>}
+        </FormControl>
+        <TextField label="Seats Available" name="seatsAvailable" type="number" value={formData.seatsAvailable} onChange={handleInputChange} inputProps={{ min: 0 }} error={!!errors.seatsAvailable} helperText={errors.seatsAvailable || ''} required />
+        <TextField label="Vehicle Number (e.g. TS08HD2006)" name="vehicleNumber" value={formData.vehicleNumber} onChange={handleInputChange} error={!!errors.vehicleNumber} helperText={errors.vehicleNumber || ''} inputProps={{ style: { textTransform: 'uppercase' } }} required />
+        <TextField label="License Number (Format: DL-1420110012345 or DL14 20110012345)" name="licenseNumber" value={formData.licenseNumber} onChange={handleInputChange} error={!!errors.licenseNumber} helperText={errors.licenseNumber || '16 characters including space or hyphen'} inputProps={{ style: { textTransform: 'uppercase' }, maxLength: 16 }} required />
+        <TextField label="Description (Optional)" name="description" value={formData.description} onChange={handleInputChange} multiline rows={3} />
+        <Button type="submit" variant="contained" color="primary" disabled={submitting}>{submitting ? 'Creating...' : 'Create Trip'}</Button>
       </Box>
     </Container>
   );

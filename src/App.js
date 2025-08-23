@@ -1,314 +1,258 @@
-import React, { useState, useEffect } from 'react';
-import Home from './components/Home';
-import About from './components/About';
-import Contact from './components/Contact';
-import Feedback from './components/Feedback';
-import Profile from './components/Profile';
-import CompleteProfile from './components/CompleteProfile';
-import Trips from './components/Trips';
-import CreateTrip from './components/CreateTrip';
-import Auth from './components/Auth';
-import Footer from './components/Footer';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Link as RouterLink,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import {
   AppBar,
   Toolbar,
-  Typography,
   Button,
-  Avatar,
+  Typography,
   Box,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Slide,
+  Avatar,
   IconButton,
   Menu,
   MenuItem,
-  useMediaQuery,
-} from '@mui/material';
-import { AnimatePresence, motion } from 'framer-motion';
-import MenuIcon from '@mui/icons-material/Menu';
-import { useTheme } from '@mui/material/styles';
+  Divider,
+  Tooltip,
+  CssBaseline,
+  Container,
+} from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
+import { ThemeProvider } from "@mui/material/styles";
+import { auth } from "./firebase";
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "./firebase";
+import theme from "./theme";
 
-const Transition = React.forwardRef(function Transition(props, ref) {
-  return <Slide direction="down" ref={ref} {...props} />;
-});
+import Home from "./components/Home";
+import Trips from "./components/Trips";
+import Create from "./components/CreateTrip";
+import MyBookings from "./components/MyBookings";
+import About from "./components/About";
+import Contact from "./components/Contact";
+import Auth from "./components/Auth";
+import CompleteProfile from "./components/CompleteProfile";
+import Profile from "./components/Profile";
+import Footer from "./components/Footer";
 
-const AnimatedPage = ({ children, key }) => (
-  <motion.div
-    key={key}
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -20 }}
-    transition={{ duration: 0.3 }}
-  >
-    {children}
-  </motion.div>
-);
+export default function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <AppContent />
+      </Router>
+    </ThemeProvider>
+  );
+}
 
-function App() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-
-  const [page, setPage] = useState('home');
+function AppContent() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [profileComplete, setProfileComplete] = useState(false);
-  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
-  const [mobileAnchorEl, setMobileAnchorEl] = useState(null);
-  const isMobileMenuOpen = Boolean(mobileAnchorEl);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
 
   useEffect(() => {
-    const onPopState = (event) => {
-      if (event.state && event.state.page) {
-        setPage(event.state.page);
+    const unsubscribe = onAuthStateChanged(auth, async (currUser) => {
+      setUser(currUser);
+      if (currUser) {
+        try {
+          const docRef = doc(db, "users", currUser.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setProfile(data);
+            if (!data.profileComplete && window.location.pathname !== "/complete-profile") {
+              navigate("/complete-profile");
+            }
+          } else {
+            // No profile doc yet - force profile completion
+            setProfile(null);
+            if (window.location.pathname !== "/complete-profile")
+              navigate("/complete-profile");
+          }
+        } catch {
+          setProfile(null);
+        }
       } else {
-        setPage('home');
+        setProfile(null);
       }
-    };
-    window.addEventListener('popstate', onPopState);
-
-    window.history.replaceState({ page: 'home' }, '', '#home');
-
-    return () => {
-      window.removeEventListener('popstate', onPopState);
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        setProfileComplete(userSnap.exists() && userSnap.data().profileComplete);
-      } else {
-        setProfileComplete(false);
-      }
+      setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [navigate]);
+
+  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuClose = () => setAnchorEl(null);
 
   const handleLogout = async () => {
     await signOut(auth);
-    setPage('home');
-    handleMobileMenuClose();
-    window.history.pushState({ page: 'home' }, '', '#home');
+    setUser(null);
+    setProfile(null);
+    setAnchorEl(null);
+    navigate("/");
   };
 
-  const handleNavigate = (targetPage) => {
-    if (!user && (targetPage === 'create' || targetPage === 'trips' || targetPage === 'profile')) {
-      setLoginPromptOpen(true);
-    } else if (user && !profileComplete && (targetPage === 'create' || targetPage === 'profile')) {
-      setPage('completeProfile');
-      handleMobileMenuClose();
-      window.history.pushState({ page: 'completeProfile' }, '', '#completeProfile');
-    } else {
-      setPage(targetPage);
-      handleMobileMenuClose();
-      window.history.pushState({ page: targetPage }, '', `#${targetPage}`);
+  const onCreateClick = () => {
+    if (!user) {
+      navigate("/auth");
+      return;
     }
+    if (!profile || !profile.profileComplete) {
+      navigate("/complete-profile");
+      return;
+    }
+    navigate("/create");
   };
 
-  const closeLoginPrompt = () => setLoginPromptOpen(false);
+  if (loading) return null; // or loading spinner
 
-  const handleMobileMenuOpen = (event) => setMobileAnchorEl(event.currentTarget);
-
-  const handleMobileMenuClose = () => setMobileAnchorEl(null);
-
-  const onProfileComplete = () => {
-    setProfileComplete(true);
-    setPage('home');
-    window.history.pushState({ page: 'home' }, '', '#home');
-  };
+  const avatarContent =
+    user && (user.photoURL ? (
+      <Avatar alt={user.displayName} src={user.photoURL} />
+    ) : profile && profile.name ? (
+      <Avatar>{profile.name.charAt(0).toUpperCase()}</Avatar>
+    ) : (
+      <Avatar>{user.email.charAt(0).toUpperCase()}</Avatar>
+    ));
 
   return (
     <>
-      <AppBar position="sticky" sx={{ backgroundColor: '#2E7D32' }}>
-        <Toolbar sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-          <img
-            src={`${process.env.PUBLIC_URL}/sharo_logo.png`}
-            alt="sharo logo"
-            style={{
-              height: 42,
-              cursor: 'pointer',
-              marginRight: 16,
-              borderRadius: 8,
-              background: '#fff',
-            }}
-            onClick={() => {
-              setPage('home');
-              handleMobileMenuClose();
-              window.history.pushState({ page: 'home' }, '', '#home');
-            }}
-          />
-          <Typography
-            variant="h4"
-            sx={{
-              fontWeight: 'bolder',
-              cursor: 'pointer',
-              color: '#388e3c',
-              textShadow: '1px 1px 5px #c8e6c9',
-              letterSpacing: 3,
-              ml: 1,
-              fontFamily: "'Montserrat', Arial, sans-serif",
-              background: 'linear-gradient(90deg,#43e97b,#38f9d7 70%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-            onClick={() => {
-              setPage('home');
-              handleMobileMenuClose();
-              window.history.pushState({ page: 'home' }, '', '#home');
-            }}
+      <AppBar position="static" sx={{ background: "linear-gradient(90deg, #2e7d32, #388e3c)" }}>
+        <Toolbar>
+          <Box
+            component={RouterLink}
+            to="/"
+            sx={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none" }}
           >
-            sharo
-          </Typography>
+            <Box
+              component="img"
+              src="/sharo_logo.png"
+              alt="Logo"
+              sx={{ width: 40, height: 40, bgcolor: "white", borderRadius: "50%", mr: 1 }}
+            />
+            <Typography variant="h6" noWrap>
+              sharo
+            </Typography>
+          </Box>
 
           <Box sx={{ flexGrow: 1 }} />
 
-          {isMobile ? (
-            <>
-              <IconButton color="inherit" onClick={handleMobileMenuOpen}>
-                <MenuIcon />
-              </IconButton>
-              <Menu
-                anchorEl={mobileAnchorEl}
-                open={isMobileMenuOpen}
-                onClose={handleMobileMenuClose}
-              >
-                <MenuItem onClick={() => handleNavigate('home')}>Home</MenuItem>
-                <MenuItem onClick={() => handleNavigate('about')}>About Us</MenuItem>
-                <MenuItem onClick={() => handleNavigate('contact')}>Contact Us</MenuItem>
-                <MenuItem onClick={() => handleNavigate('feedback')}>Feedback</MenuItem>
-                <MenuItem onClick={() => handleNavigate('profile')}>Profile</MenuItem>
-                {user ? (
-                  <MenuItem onClick={handleLogout}>Logout</MenuItem>
-                ) : (
-                  <MenuItem onClick={() => handleNavigate('auth')}>Login / Sign Up</MenuItem>
-                )}
-              </Menu>
-            </>
-          ) : (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Button color="inherit" onClick={() => handleNavigate('home')}>
-                Home
-              </Button>
-              <Button color="inherit" onClick={() => handleNavigate('about')}>
-                About Us
-              </Button>
-              <Button color="inherit" onClick={() => handleNavigate('contact')}>
-                Contact Us
-              </Button>
-              <Button color="inherit" onClick={() => handleNavigate('feedback')}>
-                Feedback
-              </Button>
-              <Button color="inherit" onClick={() => handleNavigate('profile')}>
-                Profile
-              </Button>
-              {user ? (
-                <>
-                  <Avatar
-                    sx={{ mr: 1, bgcolor: '#66BB6A', cursor: 'pointer' }}
-                    onClick={() => handleNavigate('profile')}
-                    title="Go to Profile"
-                  >
-                    {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                  </Avatar>
-                  <Button variant="outlined" color="inherit" onClick={handleLogout}>
-                    Logout
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outlined" color="inherit" onClick={() => handleNavigate('auth')}>
-                  Login / Sign Up
+          <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: 2 }}>
+            <Button component={RouterLink} to="/" color="inherit">
+              Home
+            </Button>
+            <Button component={RouterLink} to="/about" color="inherit">
+              About
+            </Button>
+            <Button component={RouterLink} to="/contact" color="inherit">
+              Contact
+            </Button>
+            <Button color="inherit" onClick={onCreateClick}>
+              Create Trip
+            </Button>
+            {user ? (
+              <>
+                <Button color="inherit" onClick={() => navigate("/my-bookings")}>
+                  My Bookings
                 </Button>
-              )}
+                <Tooltip title="Account settings">
+                  <IconButton
+                    onClick={handleMenuOpen}
+                    size="small"
+                    sx={{ ml: 2 }}
+                    aria-controls={open ? "account-menu" : undefined}
+                    aria-haspopup="true"
+                    aria-expanded={open ? "true" : undefined}
+                  >
+                    {avatarContent}
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : (
+              <Button component={RouterLink} to="/auth" color="inherit">
+                Login / Sign Up
+              </Button>
+            )}
+          </Box>
+
+          <Box sx={{ display: { xs: "flex", md: "none" } }}>
+            <IconButton onClick={handleMenuOpen} color="inherit" size="large">
+              <MenuIcon />
+            </IconButton>
+          </Box>
+
+          <Menu
+            anchorEl={anchorEl}
+            id="account-menu"
+            open={open}
+            onClose={handleMenuClose}
+            onClick={handleMenuClose}
+            PaperProps={{
+              elevation: 1,
+              sx: {
+                mt: "45px",
+                minWidth: 220,
+                "& .MuiMenuItem-root": {
+                  px: 2,
+                  py: 1,
+                },
+              },
+            }}
+            transformOrigin={{ horizontal: "right", vertical: "top" }}
+            anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+          >
+            <Box sx={{ px: 2, pt: 1 }}>
+              <Typography variant="subtitle1" noWrap>
+                {profile?.name || user.displayName}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {user.email}
+              </Typography>
             </Box>
-          )}
+            <Divider />
+            <MenuItem onClick={() => navigate("/profile")}>Profile</MenuItem>
+            <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+              Logout
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
 
-      <AnimatePresence exitBeforeEnter>
-        {page === 'home' && (
-          <AnimatedPage key="home">
-            <Home onNavigate={handleNavigate} user={user} />
-          </AnimatedPage>
-        )}
-        {page === 'about' && (
-          <AnimatedPage key="about">
-            <About />
-          </AnimatedPage>
-        )}
-        {page === 'contact' && (
-          <AnimatedPage key="contact">
-            <Contact />
-          </AnimatedPage>
-        )}
-        {page === 'feedback' && (
-          <AnimatedPage key="feedback">
-            <Feedback />
-          </AnimatedPage>
-        )}
-        {page === 'auth' && (
-          <AnimatedPage key="auth">
-            <Auth onLogin={() => handleNavigate('home')} />
-          </AnimatedPage>
-        )}
-        {page === 'trips' && user && (
-          <AnimatedPage key="trips">
-            <Trips onNavigate={handleNavigate} />
-          </AnimatedPage>
-        )}
-        {page === 'create' && user && profileComplete && (
-          <AnimatedPage key="create">
-            <CreateTrip onNavigate={handleNavigate} />
-          </AnimatedPage>
-        )}
-        {page === 'profile' && user && (
-          <AnimatedPage key="profile">
-            <Profile onNavigate={handleNavigate} />
-          </AnimatedPage>
-        )}
-        {page === 'completeProfile' && user && !profileComplete && (
-          <AnimatedPage key="completeProfile">
-            <CompleteProfile onComplete={onProfileComplete} />
-          </AnimatedPage>
-        )}
-      </AnimatePresence>
-
-      <Dialog
-        open={loginPromptOpen}
-        TransitionComponent={Transition}
-        keepMounted
-        onClose={closeLoginPrompt}
-        aria-describedby="login-required-dialog"
-      >
-        <DialogTitle>Login Required</DialogTitle>
-        <DialogContent>
-          Please login or sign up to access this feature.
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              handleNavigate('auth');
-              closeLoginPrompt();
-            }}
-            color="primary"
-          >
-            Login / Sign Up
-          </Button>
-          <Button onClick={closeLoginPrompt} color="primary">
-            Cancel
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <Box sx={{ minHeight: "100vh", bgcolor: "background.default", pt: 3, pb: 3 }}>
+        <Container maxWidth="md">
+          <Routes>
+            <Route path="/" element={<Home onNavigate={navigate} />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+            {user && profile?.profileComplete ? (
+              <>
+                <Route path="/create" element={<Create user={user} />} />
+                <Route path="/my-bookings" element={<MyBookings user={user} />} />
+                <Route path="/profile" element={<Profile user={user} profile={profile} />} />
+                <Route path="/trips" element={<Trips user={user} onNavigate={navigate} />} />
+                <Route path="/complete-profile" element={<Navigate to="/" replace />} />
+              </>
+            ) : (
+              user && <Route path="/complete-profile" element={<CompleteProfile />} />
+            )}
+            <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Container>
+      </Box>
 
       <Footer />
     </>
   );
 }
 
-export default App;

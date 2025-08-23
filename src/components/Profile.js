@@ -1,34 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { Container, Typography, TextField, Button, Box, Alert, CircularProgress } from '@mui/material';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import React, { useEffect, useState } from "react";
+import {
+  Container,
+  Typography,
+  TextField,
+  Button,
+  Box,
+  Alert,
+  CircularProgress,
+} from "@mui/material";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
 
-export default function Profile({ onNavigate }) {
+export default function Profile() {
   const user = auth.currentUser;
+
   const [form, setForm] = useState({
-    name: '',
-    username: '',
-    dob: '',
-    gender: '',
+    name: "",
+    gender: "",
+    phone: "",
   });
-  const [editMode, setEditMode] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     async function fetchProfile() {
       if (!user) return;
       setLoading(true);
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
+      const userRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(userRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         setForm({
-          name: data.name || '',
-          username: data.username || '',
-          dob: data.dob || '',
-          gender: data.gender || '',
+          name: data.name || "",
+          gender: data.gender || "",
+          phone: data.phone || "",
         });
       }
       setLoading(false);
@@ -37,66 +45,110 @@ export default function Profile({ onNavigate }) {
   }, [user]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSave = async () => {
-    setError('');
-    if (!form.name || !form.username || !form.dob || !form.gender) {
-      setError('Please fill in all fields');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    if (!form.name || !form.gender || !form.phone) {
+      setError("Please fill in all required fields.");
       return;
     }
     setSaving(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, { ...form }, { merge: true });
-      setEditMode(false);
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          ...form,
+          profileComplete: true,
+        },
+        { merge: true }
+      );
+      setSuccess("Profile updated successfully.");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  if (loading) return <CircularProgress />;
+  if (loading) {
+    return (
+      <Container sx={{ mt: 6, textAlign: "center" }}>
+        <CircularProgress />
+        <Typography>Loading profile...</Typography>
+      </Container>
+    );
+  }
 
   return (
-    <Container sx={{ mt: 8, maxWidth: 600 }}>
-      <Typography variant="h4" color="green" gutterBottom fontWeight="bold">
-        Profile
+    <Container maxWidth="sm" sx={{ my: 6 }}>
+      <Typography variant="h5" gutterBottom>
+        Your Profile
       </Typography>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {editMode ? (
-        <Box>
-          <TextField label="Full Name" name="name" value={form.name} onChange={handleChange} fullWidth margin="normal" disabled={saving} />
-          <TextField label="Username" name="username" value={form.username} onChange={handleChange} fullWidth margin="normal" disabled={saving} />
-          <TextField label="Date of Birth" name="dob" type="date" value={form.dob} onChange={handleChange} fullWidth margin="normal" InputLabelProps={{ shrink: true }} disabled={saving} />
-          <TextField label="Gender" name="gender" value={form.gender} onChange={handleChange} fullWidth margin="normal" disabled={saving} />
-          <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-            <Button variant="contained" onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
-            </Button>
-            <Button variant="outlined" onClick={() => setEditMode(false)} disabled={saving}>Cancel</Button>
-          </Box>
-        </Box>
-      ) : (
-        <Box>
-          <Typography variant="h6" gutterBottom>Name:</Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>{form.name || 'Not set'}</Typography>
+      <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+        <strong>User ID:</strong> {user?.uid}
+      </Typography>
 
-          <Typography variant="h6" gutterBottom>Username:</Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>{form.username || 'Not set'}</Typography>
-
-          <Typography variant="h6" gutterBottom>Date of Birth:</Typography>
-          <Typography variant="body1" sx={{ mb: 2 }}>{form.dob || 'Not set'}</Typography>
-
-          <Typography variant="h6" gutterBottom>Gender:</Typography>
-          <Typography variant="body1" sx={{ mb: 4 }}>{form.gender || 'Not set'}</Typography>
-
-          <Button variant="contained" onClick={() => setEditMode(true)}>Edit Profile</Button>
-        </Box>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
       )}
+
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {success}
+        </Alert>
+      )}
+
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        noValidate
+        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+      >
+        <TextField
+          label="Full Name"
+          name="name"
+          value={form.name}
+          onChange={handleChange}
+          required
+          fullWidth
+        />
+
+        <TextField
+          select
+          label="Gender"
+          name="gender"
+          value={form.gender}
+          onChange={handleChange}
+          required
+          fullWidth
+        >
+          {["Male", "Female", "Other"].map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </TextField>
+
+        <TextField
+          label="Phone Number"
+          name="phone"
+          value={form.phone}
+          onChange={handleChange}
+          required
+          fullWidth
+        />
+
+        <Button type="submit" variant="contained" color="primary" disabled={saving}>
+          {saving ? "Updating..." : "Update Profile"}
+        </Button>
+      </Box>
     </Container>
   );
 }
