@@ -60,7 +60,6 @@ function App() {
   const [mobileAnchorEl, setMobileAnchorEl] = useState(null);
   const isMobileMenuOpen = Boolean(mobileAnchorEl);
 
-  // Sync page state with browser history for proper navigation
   useEffect(() => {
     const onPopState = (event) => {
       if (event.state && event.state.page) {
@@ -71,7 +70,6 @@ function App() {
     };
     window.addEventListener('popstate', onPopState);
 
-    // Initialize history state on page load
     window.history.replaceState({ page: 'home' }, '', '#home');
 
     return () => {
@@ -79,7 +77,6 @@ function App() {
     };
   }, []);
 
-  // Listen to Firebase auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -94,7 +91,6 @@ function App() {
     return unsubscribe;
   }, []);
 
-  // Log out user
   const handleLogout = async () => {
     await signOut(auth);
     setPage('home');
@@ -102,7 +98,6 @@ function App() {
     window.history.pushState({ page: 'home' }, '', '#home');
   };
 
-  // Central page navigation with history push
   const handleNavigate = (targetPage) => {
     if (!user && (targetPage === 'create' || targetPage === 'trips' || targetPage === 'profile')) {
       setLoginPromptOpen(true);
@@ -134,7 +129,7 @@ function App() {
       <AppBar position="sticky" sx={{ backgroundColor: '#2E7D32' }}>
         <Toolbar sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
           <img
-            src={`${process.env.PUBLIC_URL}/favicon.png`}
+            src={`${process.env.PUBLIC_URL}/sharo_logo.png`}
             alt="sharo logo"
             style={{
               height: 42,
