@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import {
+  collection, query, where, getDocs, doc, getDoc, deleteDoc, orderBy, Timestamp,
+} from 'firebase/firestore';
 import {
   Container,
   Typography,
@@ -10,13 +12,24 @@ import {
   CircularProgress,
   Box,
   Button,
+  Tabs,
+  Tab,
+  Alert,
 } from '@mui/material';
 
+function formatDateTime(timestamp) {
+  if (!timestamp) return 'N/A';
+  const dateObj = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+  return dateObj.toLocaleString();
+}
+
 export default function MyBookings({ user }) {
+  const [tab, setTab] = useState(0);
   const [bookings, setBookings] = useState([]);
+  const [postedTrips, setPostedTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [cancellingBooking, setCancellingBooking] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -24,14 +37,15 @@ export default function MyBookings({ user }) {
       setLoading(false);
       return;
     }
-    async function fetchBookings() {
+
+    async function fetchAll() {
       setLoading(true);
       setError('');
       try {
+        // fetch bookings made by user
         const bookingsRef = collection(db, 'bookings');
         const q = query(bookingsRef, where('userId', '==', user.uid));
         const snapshot = await getDocs(q);
-
         const userBookings = [];
         for (const docSnap of snapshot.docs) {
           const bookingData = docSnap.data();
@@ -47,111 +61,107 @@ export default function MyBookings({ user }) {
           }
         }
         setBookings(userBookings);
+
+        // fetch trips posted by user
+        const tripsRef = collection(db, 'trips');
+        const q2 = query(tripsRef, where('uploaderId', '==', user.uid));
+        const tripSnaps = await getDocs(q2);
+        const myTrips = tripSnaps.docs.map(d => ({ id: d.id, ...d.data() }));
+        setPostedTrips(myTrips);
       } catch (err) {
-        console.error(err);
         setError('Failed to load bookings.');
       } finally {
         setLoading(false);
       }
     }
-    fetchBookings();
+
+    fetchAll();
   }, [user]);
 
-  const formatDate = (date) => {
-    if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString();
+  const getTripStatus = (trip) => {
+    if (!trip.date) return "N/A";
+    const dateObj = trip.date?.toDate ? trip.date.toDate() : new Date(trip.date);
+    return (dateObj > new Date()) ? "Active" : "Expired";
   };
 
   // Optional: Cancel booking function
-  const cancelBooking = async (bookingId, trip) => {
+  const cancelBooking = async (bookingId) => {
     if (!window.confirm('Are you sure you want to cancel this booking?')) return;
-    setCancellingBooking(bookingId);
+    setCancelling(bookingId);
     try {
       await deleteDoc(doc(db, 'bookings', bookingId));
-      // Update seatsAvailable in trip document
-      const tripRef = doc(db, 'trips', trip.id);
-      await getDoc(tripRef).then((tripSnap) => {
-        if (tripSnap.exists()) {
-          tripSnap.ref.update({
-            seatsAvailable: (tripSnap.data().seatsAvailable || 0) + 1, // or bookedSeats count if stored
-          });
-        }
-      });
       setBookings((prev) => prev.filter((b) => b.id !== bookingId));
     } catch (err) {
       alert('Failed to cancel booking. Please try again.');
-      console.error(err);
     } finally {
-      setCancellingBooking(null);
+      setCancelling(null);
     }
   };
 
-  if (loading) {
-    return (
-      <Container sx={{ textAlign: 'center', mt: 8 }}>
-        <CircularProgress />
-        <Typography mt={2}>Loading your bookings...</Typography>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container sx={{ textAlign: 'center', mt: 8 }}>
-        <Typography color="error">{error}</Typography>
-      </Container>
-    );
-  }
-
-  if (bookings.length === 0) {
-    return (
-      <Container sx={{ mt: 4 }}>
-        <Typography variant="h6">You have no bookings yet.</Typography>
-      </Container>
-    );
-  }
-
   return (
-    <Container sx={{ mt: 4, maxWidth: 'lg' }}>
+    <Container maxWidth="md" sx={{ mt: 4 }}>
       <Typography variant="h4" gutterBottom>
-        My Bookings
+        My Bookings & My Posted Trips
       </Typography>
-      <Grid container spacing={4}>
-        {bookings.map(({ id, bookingSeats, bookedAt, trip }) => (
-          <Grid item xs={12} sm={6} md={4} key={id}>
-            <Card sx={{ boxShadow: 3, position: 'relative' }}>
+      <Tabs
+        value={tab}
+        onChange={(_, val) => setTab(val)}
+        sx={{ mb: 2 }}
+        aria-label="booking trip tabs"
+      >
+        <Tab label="My Bookings" />
+        <Tab label="My Posted Trips" />
+      </Tabs>
+
+      {loading ? (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : tab === 0 ? (
+        bookings.length === 0 ? (
+          <Typography>No bookings yet.</Typography>
+        ) : (
+          bookings.map(({ id, bookingSeats, bookedAt, trip }) => (
+            <Card key={id} sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="h6" color="primary" gutterBottom>
-                  {trip.vehicleType || 'Unknown Vehicle'}
-                </Typography>
-                <Typography variant="body2" gutterBottom>
-                  From {trip.startLocation || 'Unknown'} to {trip.endLocation || 'Unknown'}
-                </Typography>
-                <Typography variant="body2" gutterBottom>
-                  Date: {formatDate(trip.date)}
-                </Typography>
-                <Typography variant="body2" gutterBottom>
-                  Booked Seats: {bookingSeats}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Booked On: {bookedAt ? bookedAt.toLocaleDateString() : 'N/A'}
-                </Typography>
-              </CardContent>
-              <Box sx={{ p: 2, pt: 0 }}>
+                <Typography variant="h6">{trip.vehicleType || "Unknown Vehicle"}</Typography>
+                <Typography>From: {trip.startLocation} → To: {trip.endLocation}</Typography>
+                <Typography>Date: {formatDateTime(trip.date)}</Typography>
+                <Typography>Booked Seats: {bookingSeats}</Typography>
+                <Typography>Booked On: {formatDateTime(bookedAt)}</Typography>
                 <Button
+                  sx={{ mt: 1 }}
                   variant="outlined"
                   color="error"
-                  fullWidth
-                  onClick={() => cancelBooking(id, trip)}
-                  disabled={cancellingBooking === id}
+                  disabled={cancelling === id}
+                  onClick={() => cancelBooking(id)}
                 >
-                  {cancellingBooking === id ? 'Cancelling...' : 'Cancel Booking'}
+                  {cancelling === id ? 'Cancelling...' : 'Cancel Booking'}
                 </Button>
-              </Box>
+              </CardContent>
             </Card>
-          </Grid>
-        ))}
-      </Grid>
+          ))
+        )
+      ) : postedTrips.length === 0 ? (
+        <Typography>You have not posted any trips yet.</Typography>
+      ) : (
+        postedTrips.map((trip) => (
+          <Card key={trip.id} sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6">{trip.vehicleType || "Unknown Vehicle"}</Typography>
+              <Typography>From: {trip.startLocation} → To: {trip.endLocation}</Typography>
+              <Typography>Date: {formatDateTime(trip.date)}</Typography>
+              <Typography>Vehicle No: {trip.vehicleNumber}</Typography>
+              <Typography>License No: {trip.licenseNumber}</Typography>
+              <Typography>Seats Available: {trip.seatsAvailable}</Typography>
+              <Typography>Description: {trip.description}</Typography>
+              <Typography>Status: <b>{getTripStatus(trip)}</b></Typography>
+            </CardContent>
+          </Card>
+        ))
+      )}
     </Container>
   );
 }

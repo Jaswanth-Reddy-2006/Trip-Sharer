@@ -32,7 +32,7 @@ import theme from "./theme";
 
 import Home from "./components/Home";
 import Trips from "./components/Trips";
-import Create from "./components/CreateTrip";
+import CreateTrip from "./components/CreateTrip";
 import MyBookings from "./components/MyBookings";
 import About from "./components/About";
 import Contact from "./components/Contact";
@@ -71,11 +71,13 @@ function AppContent() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setProfile(data);
-            if (!data.profileComplete && window.location.pathname !== "/complete-profile") {
+            if (
+              !data.profileComplete &&
+              window.location.pathname !== "/complete-profile"
+            ) {
               navigate("/complete-profile");
             }
           } else {
-            // No profile doc yet - force profile completion
             setProfile(null);
             if (window.location.pathname !== "/complete-profile")
               navigate("/complete-profile");
@@ -114,7 +116,7 @@ function AppContent() {
     navigate("/create");
   };
 
-  if (loading) return null; // or loading spinner
+  if (loading) return null;
 
   const avatarContent =
     user && (user.photoURL ? (
@@ -127,18 +129,32 @@ function AppContent() {
 
   return (
     <>
-      <AppBar position="static" sx={{ background: "linear-gradient(90deg, #2e7d32, #388e3c)" }}>
+      <AppBar
+        position="static"
+        sx={{ background: "linear-gradient(90deg, #2e7d32, #388e3c)" }}
+      >
         <Toolbar>
           <Box
             component={RouterLink}
             to="/"
-            sx={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none" }}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              color: "inherit",
+              textDecoration: "none",
+            }}
           >
             <Box
               component="img"
               src="/sharo_logo.png"
               alt="Logo"
-              sx={{ width: 40, height: 40, bgcolor: "white", borderRadius: "50%", mr: 1 }}
+              sx={{
+                width: 40,
+                height: 40,
+                bgcolor: "white",
+                borderRadius: "50%",
+                mr: 1,
+              }}
             />
             <Typography variant="h6" noWrap>
               sharo
@@ -147,9 +163,18 @@ function AppContent() {
 
           <Box sx={{ flexGrow: 1 }} />
 
-          <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: 2 }}>
+          <Box
+            sx={{
+              display: { xs: "none", md: "flex" },
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
             <Button component={RouterLink} to="/" color="inherit">
               Home
+            </Button>
+            <Button component={RouterLink} to="/trips" color="inherit">
+              View Trips
             </Button>
             <Button component={RouterLink} to="/about" color="inherit">
               About
@@ -162,17 +187,17 @@ function AppContent() {
             </Button>
             {user ? (
               <>
-                <Button color="inherit" onClick={() => navigate("/my-bookings")}>
+                <Button
+                  color="inherit"
+                  onClick={() => navigate("/my-bookings")}
+                >
                   My Bookings
                 </Button>
-                <Tooltip title="Account settings">
+                <Tooltip title="Account">
                   <IconButton
                     onClick={handleMenuOpen}
                     size="small"
                     sx={{ ml: 2 }}
-                    aria-controls={open ? "account-menu" : undefined}
-                    aria-haspopup="true"
-                    aria-expanded={open ? "true" : undefined}
                   >
                     {avatarContent}
                   </IconButton>
@@ -211,48 +236,72 @@ function AppContent() {
             transformOrigin={{ horizontal: "right", vertical: "top" }}
             anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
           >
-            <Box sx={{ px: 2, pt: 1 }}>
-              <Typography variant="subtitle1" noWrap>
-                {profile?.name || user.displayName}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {user.email}
-              </Typography>
-            </Box>
-            <Divider />
-            <MenuItem onClick={() => navigate("/profile")}>Profile</MenuItem>
-            <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
-              Logout
-            </MenuItem>
+            {user && (
+              <>
+                <Box sx={{ px: 2, pt: 1 }}>
+                  <Typography variant="subtitle1" noWrap>
+                    {profile?.name || user.displayName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {user.email}
+                  </Typography>
+                </Box>
+                <Divider />
+                <MenuItem onClick={() => navigate("/profile")}>Profile</MenuItem>
+                <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+                  Logout
+                </MenuItem>
+              </>
+            )}
+            {!user && (
+              <MenuItem
+                onClick={() => {
+                  navigate("/auth");
+                }}
+              >
+                Login / Sign Up
+              </MenuItem>
+            )}
           </Menu>
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ minHeight: "100vh", bgcolor: "background.default", pt: 3, pb: 3 }}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          bgcolor: "background.default",
+          pt: 3,
+          pb: 3,
+        }}
+      >
         <Container maxWidth="md">
           <Routes>
             <Route path="/" element={<Home onNavigate={navigate} />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
-            {user && profile?.profileComplete ? (
-              <>
-                <Route path="/create" element={<Create user={user} />} />
-                <Route path="/my-bookings" element={<MyBookings user={user} />} />
-                <Route path="/profile" element={<Profile user={user} profile={profile} />} />
-                <Route path="/trips" element={<Trips user={user} onNavigate={navigate} />} />
-                <Route path="/complete-profile" element={<Navigate to="/" replace />} />
-              </>
-            ) : (
-              user && <Route path="/complete-profile" element={<CompleteProfile />} />
-            )}
-            <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/" replace />} />
+            <Route
+              path="/trips"
+              element={<Trips user={user} onNavigate={navigate} />}
+            />
+            <Route
+              path="/create"
+              element={<CreateTrip user={user} onNavigate={navigate} />}
+            />
+            <Route path="/my-bookings" element={<MyBookings user={user} />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route
+              path="/complete-profile"
+              element={<CompleteProfile />}
+            />
+            <Route
+              path="/auth"
+              element={!user ? <Auth /> : <Navigate to="/" replace />}
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Container>
       </Box>
-
       <Footer />
     </>
   );
 }
-
