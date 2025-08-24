@@ -1,14 +1,15 @@
 import React from 'react';
+import { Box, Typography } from '@mui/material';
 
 export default function EmptyState({ message, imageName = 'empty-state.svg' }) {
   return (
-    <div style={{ textAlign: 'center', padding: '40px' }}>
-      <img 
-        src={`${process.env.PUBLIC_URL}/${imageName}`} 
-        alt="Empty state" 
-        style={{ maxWidth: 300, marginBottom: 20 }} 
+    <Box sx={{ textAlign: 'center', py: 6 }}>
+      <img
+        src={`/${imageName}`}
+        alt="Empty state"
+        style={{ maxWidth: 240, width: '100%', opacity: 0.85, marginBottom: 16 }}
       />
-      <h3>{message || 'Nothing to show here yet!'}</h3>
-    </div>
+      <Typography color="text.secondary">{message}</Typography>
+    </Box>
   );
 }

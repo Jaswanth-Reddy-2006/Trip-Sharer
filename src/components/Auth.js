@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth } from '../firebase';
-import { Container, TextField, Button, Typography, Box, Divider } from '@mui/material';
-
-const googleProvider = new GoogleAuthProvider();
+import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../firebase';
+import { Container, TextField, Button, Typography, Box, Divider, Alert } from '@mui/material';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -23,7 +21,7 @@ export default function Auth() {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Login failed.');
     } finally {
       setLoading(false);
     }
@@ -36,25 +34,71 @@ export default function Auth() {
       await signInWithPopup(auth, googleProvider);
       navigate('/');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Google login failed.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="xs" sx={{ mt: 8 }}>
-      <Typography variant="h5" gutterBottom>Login</Typography>
-      <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" disabled={loading} />
-        <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" disabled={loading} />
-        {error && <Typography color="error">{error}</Typography>}
-        <Button type="submit" variant="contained" color="primary" disabled={loading}>{loading ? 'Logging in...' : 'Log In'}</Button>
+    <Container maxWidth="xs" sx={{ py: 6 }}>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 3 }}>
+        Login
+      </Typography>
+
+      <Box component="form" onSubmit={handleLogin}>
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+          fullWidth
+          margin="normal"
+          disabled={loading}
+        />
+        <TextField
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          autoComplete="current-password"
+          fullWidth
+          margin="normal"
+          disabled={loading}
+        />
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <Button
+          type="submit"
+          variant="contained"
+          color="primary"
+          fullWidth
+          sx={{ mt: 3 }}
+          disabled={loading}
+        >
+          {loading ? 'Logging in...' : 'Log In'}
+        </Button>
+
+        <Divider sx={{ my: 3 }}>OR</Divider>
+
+        <Button
+          variant="outlined"
+          color="primary"
+          fullWidth
+          onClick={handleGoogleLogin}
+          disabled={loading}
+        >
+          Login with Google
+        </Button>
       </Box>
-      <Divider sx={{ my: 3 }}>OR</Divider>
-      <Button variant="outlined" fullWidth onClick={handleGoogleLogin} disabled={loading} sx={{ textTransform: 'none' }}>
-        Login with Google
-      </Button>
     </Container>
   );
 }

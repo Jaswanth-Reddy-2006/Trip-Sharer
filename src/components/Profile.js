@@ -7,6 +7,7 @@ import {
   Box,
   Alert,
   CircularProgress,
+  MenuItem,
 } from "@mui/material";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
@@ -19,7 +20,6 @@ export default function Profile() {
     gender: "",
     phone: "",
   });
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -27,25 +27,36 @@ export default function Profile() {
 
   useEffect(() => {
     async function fetchProfile() {
-      if (!user) return;
-      setLoading(true);
-      const userRef = doc(db, "users", user.uid);
-      const docSnap = await getDoc(userRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setForm({
-          name: data.name || "",
-          gender: data.gender || "",
-          phone: data.phone || "",
-        });
+      if (!user) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      setLoading(true);
+      setError("");
+      try {
+        const userRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(userRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setForm({
+            name: data.name || "",
+            gender: data.gender || "",
+            phone: data.phone || "",
+          });
+        }
+      } catch {
+        setError("Failed to load profile.");
+      } finally {
+        setLoading(false);
+      }
     }
     fetchProfile();
   }, [user]);
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setError("");
+    setSuccess("");
   };
 
   const handleSubmit = async (e) => {
@@ -56,19 +67,20 @@ export default function Profile() {
       setError("Please fill in all required fields.");
       return;
     }
+    if (!user) {
+      setError("Not authenticated.");
+      return;
+    }
     setSaving(true);
     try {
       await setDoc(
         doc(db, "users", user.uid),
-        {
-          ...form,
-          profileComplete: true,
-        },
+        { ...form, profileComplete: true },
         { merge: true }
       );
       setSuccess("Profile updated successfully.");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Update failed.");
     } finally {
       setSaving(false);
     }
@@ -76,76 +88,62 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <Container sx={{ mt: 6, textAlign: "center" }}>
-        <CircularProgress />
-        <Typography>Loading profile...</Typography>
+      <Container maxWidth="sm" sx={{ py: 6 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <CircularProgress size={24} />
+          <Typography>Loading profile...</Typography>
+        </Box>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="sm" sx={{ my: 6 }}>
-      <Typography variant="h5" gutterBottom>
+    <Container maxWidth="sm" sx={{ py: 6 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
         Your Profile
       </Typography>
 
-      <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-        <strong>User ID:</strong> {user?.uid}
-      </Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
-
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        noValidate
-        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-      >
+      <Box component="form" onSubmit={handleSubmit}>
         <TextField
           label="Full Name"
           name="name"
           value={form.name}
           onChange={handleChange}
-          required
           fullWidth
+          required
+          margin="normal"
         />
-
         <TextField
-          select
           label="Gender"
           name="gender"
+          select
           value={form.gender}
           onChange={handleChange}
-          required
           fullWidth
+          required
+          margin="normal"
         >
           {["Male", "Female", "Other"].map((option) => (
-            <option key={option} value={option}>
+            <MenuItem key={option} value={option}>
               {option}
-            </option>
+            </MenuItem>
           ))}
         </TextField>
-
         <TextField
-          label="Phone Number"
+          label="Phone"
           name="phone"
+          type="tel"
           value={form.phone}
           onChange={handleChange}
-          required
           fullWidth
+          required
+          margin="normal"
         />
 
-        <Button type="submit" variant="contained" color="primary" disabled={saving}>
+        <Button type="submit" variant="contained" sx={{ mt: 2 }} disabled={saving}>
           {saving ? "Updating..." : "Update Profile"}
         </Button>
       </Box>

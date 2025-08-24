@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Container, Typography, Box, TextField, Button, Alert, Paper } from '@mui/material';
+import { Container, Typography, Box, TextField, Button, Alert, Paper, Grid } from '@mui/material';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
+import EmailIcon from '@mui/icons-material/Email';
+import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk';
+import RoomIcon from '@mui/icons-material/Room';
 
 export default function Contact() {
   const [sent, setSent] = useState(false);
@@ -11,47 +14,71 @@ export default function Contact() {
   };
 
   return (
-    <Container maxWidth="sm" sx={{ my: 6 }}>
-      <Paper elevation={4} sx={{ p: 4, borderRadius: 4 }}>
-        <Box sx={{ textAlign: 'center', mb: 2 }}>
-          <MarkEmailReadIcon sx={{ fontSize: 46, color: "primary.main" }} />
-          <Typography variant="h4" fontWeight={700} color="primary" gutterBottom>
-            Contact Us
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-            We'd love to hear from you! Questions, partnership ideas, or feedback — use the form below and our team will respond soon.
-          </Typography>
-        </Box>
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
-          sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}
-        >
-          <TextField label="Your Name" name="name" fullWidth required />
-          <TextField label="Email Address" name="email" type="email" fullWidth required />
-          <TextField label="Message" name="message" multiline rows={4} fullWidth required />
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            size="large"
-            sx={{ mt: 1, borderRadius: 3 }}
-            disabled={sent}
-          >
-            Send Message
-          </Button>
-          {sent && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              Thank you! We’ve received your message.
-            </Alert>
-          )}
-        </Box>
-        <Box sx={{ mt: 4, textAlign: "center", color: "text.secondary" }}>
-          <Typography variant="body2">
-            Or reach us at: <b>team@sharo.app</b>
-          </Typography>
-        </Box>
-      </Paper>
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
+      <Typography variant="h3" sx={{ fontWeight: 800, mb: 2 }}>
+        Contact Us
+      </Typography>
+      <Typography color="text.secondary" sx={{ mb: 4, maxWidth: 800 }}>
+        Questions, partnerships, or product feedback—drop a message and the team will respond soon.
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={7}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+            <Box component="form" onSubmit={handleSubmit}>
+              <TextField label="Name" fullWidth required margin="normal" />
+              <TextField label="Email" type="email" fullWidth required margin="normal" />
+              <TextField label="Message" multiline rows={5} fullWidth required margin="normal" />
+              <Button type="submit" variant="contained" sx={{ mt: 2 }}>
+                Send Message
+              </Button>
+              {sent && (
+                <Alert
+                  icon={<MarkEmailReadIcon fontSize="inherit" />}
+                  severity="success"
+                  sx={{ mt: 2 }}
+                >
+                  Thank you! We’ve received your message.
+                </Alert>
+              )}
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={5}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}`, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+              Get in touch
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <EmailIcon color="primary" sx={{ mr: 1.5 }} />
+              <Typography>team@sharo.app</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <PhoneInTalkIcon color="primary" sx={{ mr: 1.5 }} />
+              <Typography>+91 90000 00000</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <RoomIcon color="primary" sx={{ mr: 1.5 }} />
+              <Typography>India</Typography>
+            </Box>
+
+            <Box
+              sx={{
+                mt: 3,
+                p: 2,
+                bgcolor: 'background.default',
+                borderRadius: 2,
+                border: (t) => `1px dashed ${t.palette.divider}`,
+                color: 'text.secondary',
+                fontSize: 14,
+              }}
+            >
+              Tip: For account or booking issues, include your registered email to help us assist faster.
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
     </Container>
   );
 }

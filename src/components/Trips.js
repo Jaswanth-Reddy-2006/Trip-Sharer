@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Grid,
@@ -14,128 +14,123 @@ import {
   TextField,
   InputAdornment,
   Paper,
-  Select,
   FormControl,
+  Select,
   InputLabel,
-} from '@mui/material';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import LocationOn from '@mui/icons-material/LocationOn';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import PeopleIcon from '@mui/icons-material/People';
+  CircularProgress,
+  Alert,
+} from "@mui/material";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import PeopleIcon from "@mui/icons-material/People";
 
-import { db } from '../firebase';
-import { collection, query, getDocs } from 'firebase/firestore';
-import TripMap from './TripMap';
+import { db } from "../firebase";
+import { collection, query, getDocs } from "firebase/firestore";
 
-export default function Trips({ onNavigate, user }) {
+import TripMap from "./TripMap";
+
+const VEHICLE_TYPES = ["Bike", "Scooter", "Car"];
+
+export default function Trips({ user, onNavigate, mapsLoaded, mapsError }) {
   const [trips, setTrips] = useState([]);
   const [filteredTrips, setFilteredTrips] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [distances, setDistances] = useState({});
 
-  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [searchPickup, setSearchPickup] = useState("");
+  const [searchDrop, setSearchDrop] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  const [filterTime, setFilterTime] = useState("");
+  const [filterVehicle, setFilterVehicle] = useState("");
+  const [sortBy, setSortBy] = useState("soonest");
 
-  const [searchStart, setSearchStart] = useState('');
-  const [searchEnd, setSearchEnd] = useState('');
-  const [filterDate, setFilterDate] = useState('');
-  const [filterTime, setFilterTime] = useState('');
-  const [filterVehicleType, setFilterVehicleType] = useState('');
-  const [sortBy, setSortBy] = useState('soonest');
-
-  const vehicleTypes = ['Bike', 'Scooter', 'Car'];
-
-  const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   const isMenuOpen = Boolean(menuAnchorEl);
 
-  // Fetch trips once on mount
+  // Load trips once on mount
   useEffect(() => {
-    async function fetchTrips() {
-      const tripsCollection = collection(db, 'trips');
-      const q = query(tripsCollection);
-      const snapshot = await getDocs(q);
-      const data = [];
-      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-      setTrips(data);
+    async function loadTrips() {
+      setLoading(true);
+      setError("");
+      try {
+        const q = query(collection(db, "trips"));
+        const snapshot = await getDocs(q);
+        setTrips(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch {
+        setError("Failed to load trips. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
     }
-    fetchTrips();
+    loadTrips();
   }, []);
 
-  // Filter and sort trips on dependencies change
+  // Filter, sort trips when dependencies change
   useEffect(() => {
-    let result = [...trips];
+    let data = [...trips];
 
-    if (searchStart.length > 1) {
-      const lower = searchStart.toLowerCase().trim();
-      result = result.filter(t => t.startLocation && t.startLocation.toLowerCase().includes(lower));
+    if (searchPickup.length > 1) {
+      const lower = searchPickup.toLowerCase();
+      data = data.filter(trip => trip.startLocation?.toLowerCase().includes(lower));
     }
-
-    if (searchEnd.length > 1) {
-      const lower = searchEnd.toLowerCase().trim();
-      result = result.filter(t => t.endLocation && t.endLocation.toLowerCase().includes(lower));
+    if (searchDrop.length > 1) {
+      const lower = searchDrop.toLowerCase();
+      data = data.filter(trip => trip.endLocation?.toLowerCase().includes(lower));
     }
-
     if (filterDate) {
-      result = result.filter(t => {
-        if (!t.date) return false;
-        const d = t.date.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
-        return d.toISOString().slice(0, 10) >= filterDate;
+      data = data.filter(trip => {
+        if (!trip.date) return false;
+        const dt = trip.date.seconds ? new Date(trip.date.seconds * 1000) : new Date(trip.date);
+        return dt.toISOString().slice(0, 10) >= filterDate;
       });
     }
-
     if (filterTime && filterDate) {
-      result = result.filter(t => {
-        if (!t.date) return false;
-        const d = t.date.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
-        return d.toTimeString().slice(0, 5) >= filterTime;
+      data = data.filter(trip => {
+        if (!trip.date) return false;
+        const dt = trip.date.seconds ? new Date(trip.date.seconds * 1000) : new Date(trip.date);
+        return dt.toTimeString().slice(0, 5) >= filterTime;
       });
     }
-
-    if (filterVehicleType) {
-      result = result.filter(t => t.vehicleType === filterVehicleType);
+    if (filterVehicle) {
+      data = data.filter(trip => trip.vehicleType === filterVehicle);
     }
 
-    result.sort((a, b) => {
-      if (sortBy === 'soonest') {
-        const aTime = a.date ? (a.date.seconds ?? new Date(a.date).getTime()) : Number.MAX_SAFE_INTEGER;
-        const bTime = b.date ? (b.date.seconds ?? new Date(b.date).getTime()) : Number.MAX_SAFE_INTEGER;
+    data.sort((a, b) => {
+      const toMinutes = dt => {
+        if (!dt) return Number.MAX_SAFE_INTEGER;
+        const dateObj = dt.seconds ? new Date(dt.seconds * 1000) : new Date(dt);
+        return dateObj.getHours() * 60 + dateObj.getMinutes();
+      };
+      if (sortBy === "soonest") {
+        const aTime = a.date ? (a.date.seconds ? a.date.seconds * 1000 : new Date(a.date).getTime()) : Number.MAX_SAFE_INTEGER;
+        const bTime = b.date ? (b.date.seconds ? b.date.seconds * 1000 : new Date(b.date).getTime()) : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       }
-      if (sortBy === 'timeAsc') {
-        return toMinutes(a.date) - toMinutes(b.date);
-      }
-      if (sortBy === 'seatsAsc') {
-        return (a.seatsAvailable ?? Number.MAX_SAFE_INTEGER) - (b.seatsAvailable ?? Number.MAX_SAFE_INTEGER);
-      }
-      if (sortBy === 'seatsDesc') {
-        return (b.seatsAvailable ?? 0) - (a.seatsAvailable ?? 0);
-      }
+      if (sortBy === "timeAsc") return toMinutes(a.date) - toMinutes(b.date);
+      if (sortBy === "seatsAsc") return (a.seatsAvailable ?? 0) - (b.seatsAvailable ?? 0);
+      if (sortBy === "seatsDesc") return (b.seatsAvailable ?? 0) - (a.seatsAvailable ?? 0);
       return 0;
     });
 
-    setFilteredTrips(result);
-  }, [trips, searchStart, searchEnd, filterDate, filterTime, filterVehicleType, sortBy]);
+    setFilteredTrips(data);
+  }, [trips, searchPickup, searchDrop, filterDate, filterTime, filterVehicle, sortBy]);
 
-  // Convert date/time to minutes after midnight for sorting
-  function toMinutes(date) {
-    if (!date) return Number.MAX_SAFE_INTEGER;
-    const d = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
-    return d.getHours() * 60 + d.getMinutes();
-  }
-
-  // Fetch distances using Google Distance Matrix API when filteredTrips change
+  // Calculate distances on filtered trips when maps are loaded
   useEffect(() => {
-    if (!googleMapsApiKey) return;
-    if (filteredTrips.length === 0) {
+    if (!mapsLoaded || filteredTrips.length === 0) {
       setDistances({});
       return;
     }
-    if (!(window.google && window.google.maps)) return;
+    if (!window.google || !window.google.maps) return;
 
     const service = new window.google.maps.DistanceMatrixService();
-    const origins = filteredTrips.map(t => t.startLocation);
-    const destinations = filteredTrips.map(t => t.endLocation);
+    const origins = filteredTrips.map(trip => trip.startLocation);
+    const destinations = filteredTrips.map(trip => trip.endLocation);
 
     service.getDistanceMatrix(
       {
@@ -145,70 +140,91 @@ export default function Trips({ onNavigate, user }) {
         unitSystem: window.google.maps.UnitSystem.METRIC,
       },
       (response, status) => {
-        if (status === 'OK') {
-          const newDistances = {};
-          response.rows.forEach((row, i) => {
-            const element = row.elements[i];
-            if (element.status === 'OK') {
-              newDistances[filteredTrips[i].id] = element.distance.text;
-            }
-          });
-          setDistances(newDistances);
+        if (status !== "OK" || !response?.rows) {
+          setDistances({});
+          return;
         }
+        const distanceMap = {};
+        response.rows.forEach((row, i) => {
+          const element = row.elements[i];
+          distanceMap[filteredTrips[i].id] = element && element.status === "OK" ? element.distance.text : "N/A";
+        });
+        setDistances(distanceMap);
       }
     );
-  }, [filteredTrips, googleMapsApiKey]);
+  }, [filteredTrips, mapsLoaded]);
 
-  function formatDate(date) {
-    if (!date) return 'N/A';
-    if (date.seconds) return new Date(date.seconds * 1000).toLocaleDateString();
-    if (typeof date === 'string' || date instanceof Date) return new Date(date).toLocaleDateString();
-    return 'Invalid date';
-  }
+  const formatDate = date => {
+    if (!date) return "N/A";
+    const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+    return dt.toLocaleDateString();
+  };
 
-  function formatTime(date) {
-    if (!date) return 'N/A';
-    if (date.seconds) return new Date(date.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (typeof date === 'string' || date instanceof Date) return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return 'Invalid time';
-  }
+  const formatTime = date => {
+    if (!date) return "N/A";
+    const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
 
-  function handleMenuOpen(event, trip) {
+  // Single declarations of handlers
+  const openMenu = (event, trip) => {
     setMenuAnchorEl(event.currentTarget);
     setSelectedTrip(trip);
-  }
+  };
 
-  function handleMenuClose() {
+  const closeMenu = () => {
     setMenuAnchorEl(null);
     setSelectedTrip(null);
-  }
+  };
+
+  const handleBook = () => {
+    if (!user) {
+      alert("Please login to book a trip.");
+      return;
+    }
+    if (selectedTrip) {
+      onNavigate(`/book-trip/${selectedTrip.id}`);
+      closeMenu();
+    }
+  };
+
+  const resetFilters = () => {
+    setSearchPickup("");
+    setSearchDrop("");
+    setFilterDate("");
+    setFilterTime("");
+    setFilterVehicle("");
+    setSortBy("soonest");
+    setDistances({});
+  };
 
   return (
-    <Container sx={{ my: 4 }}>
-      <Typography variant="h4" color="primary" fontWeight="bold" gutterBottom>
+    <Container maxWidth="lg" sx={{ pt: 4, pb: 8 }}>
+      <Typography variant="h3" gutterBottom>
         Available Trips
       </Typography>
 
-      <Paper sx={{ p: 2, mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }} elevation={3}>
+      {/* Filters */}
+      <Paper sx={{ p: 2, mb: 4, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
         <TextField
-          size="small"
           label="Pickup Location"
-          value={searchStart}
-          onChange={e => setSearchStart(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment> }}
-          sx={{ minWidth: 180 }}
+          size="small"
+          value={searchPickup}
+          onChange={e => setSearchPickup(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><LocationOnIcon /></InputAdornment> }}
+          sx={{ minWidth: 200 }}
         />
         <TextField
-          size="small"
           label="Drop Location"
-          value={searchEnd}
-          onChange={e => setSearchEnd(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><LocationOn sx={{ transform: 'rotate(180deg)' }} /></InputAdornment> }}
-          sx={{ minWidth: 180 }}
+          size="small"
+          value={searchDrop}
+          onChange={e => setSearchDrop(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><LocationOnIcon sx={{ transform: "rotate(180deg)" }} /></InputAdornment> }}
+          sx={{ minWidth: 200 }}
         />
         <TextField
-          size="small"
           label="Date"
+          size="small"
           type="date"
           value={filterDate}
           onChange={e => setFilterDate(e.target.value)}
@@ -216,8 +232,8 @@ export default function Trips({ onNavigate, user }) {
           sx={{ minWidth: 150 }}
         />
         <TextField
-          size="small"
           label="Time"
+          size="small"
           type="time"
           value={filterTime}
           onChange={e => setFilterTime(e.target.value)}
@@ -227,146 +243,139 @@ export default function Trips({ onNavigate, user }) {
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Vehicle Type</InputLabel>
           <Select
-            value={filterVehicleType}
-            onChange={e => setFilterVehicleType(e.target.value)}
+            value={filterVehicle}
+            onChange={e => setFilterVehicle(e.target.value)}
+            label="Vehicle Type"
             displayEmpty
           >
-            <MenuItem value="">
-              <em>All</em>
-            </MenuItem>
-            {vehicleTypes.map(type => (
-              <MenuItem key={type} value={type}>{type}</MenuItem>
-            ))}
+            <MenuItem value=""><em>All</em></MenuItem>
+            {VEHICLE_TYPES.map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Sort By</InputLabel>
-          <Select
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-            label="Sort By"
-          >
-            <MenuItem value="soonest">Date: Soonest First</MenuItem>
-            <MenuItem value="timeAsc">Time: Earliest First</MenuItem>
-            <MenuItem value="seatsAsc">Seats: Low to High</MenuItem>
-            <MenuItem value="seatsDesc">Seats: High to Low</MenuItem>
+          <Select value={sortBy} onChange={e => setSortBy(e.target.value)} label="Sort By">
+            <MenuItem value="soonest">Date: Soonest</MenuItem>
+            <MenuItem value="timeAsc">Time: Earliest</MenuItem>
+            <MenuItem value="seatsAsc">Seats: Fewest</MenuItem>
+            <MenuItem value="seatsDesc">Seats: Most</MenuItem>
           </Select>
         </FormControl>
-        <Button
-          sx={{ minWidth: 120 }}
-          onClick={() => {
-            setSearchStart('');
-            setSearchEnd('');
-            setFilterDate('');
-            setFilterTime('');
-            setFilterVehicleType('');
-            setSortBy('soonest');
-            setDistances({});
-          }}
-        >
+        <Button variant="outlined" sx={{ minWidth: 150 }} onClick={resetFilters}>
           Reset Filters
         </Button>
       </Paper>
 
-      <Grid container spacing={4}>
-        {filteredTrips.length === 0 ? (
-          <Typography variant="subtitle1" color="textSecondary" sx={{ mx: 'auto' }}>
-            No trips found matching filters.
-          </Typography>
-        ) : (
-          filteredTrips.map(trip => (
-            <Grid key={trip.id} item xs={12} sm={6} md={4}>
-              <Card sx={{ borderRadius: 3, boxShadow: 6, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Error and Loading */}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {(!mapsLoaded && !error) && <Alert severity="info" sx={{ mb: 2 }}>Loading maps data...</Alert>}
+
+      {/* Trips List */}
+      {loading ? (
+        <Box textAlign="center" mt={4}>
+          <CircularProgress />
+        </Box>
+      ) : filteredTrips.length === 0 ? (
+        <Typography variant="h6" align="center" mt={4}>
+          No trips available matching criteria.
+        </Typography>
+      ) : (
+        <Grid container spacing={4}>
+          {filteredTrips.map(trip => (
+            <Grid item xs={12} md={6} lg={4} key={trip.id}>
+              <Card sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
                 <CardContent sx={{ flexGrow: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
                     <DirectionsCarIcon color="primary" />
-                    <Typography variant="subtitle1" fontWeight="bold">{trip.vehicleType || 'Vehicle'}</Typography>
+                    <Typography variant="h6">{trip.vehicleType || "Vehicle"}</Typography>
+                  </Box>
+                  <Box sx={{ mb: 1 }}>
+                    <LocationOnIcon color="secondary" sx={{ verticalAlign: "middle" }} />
+                    <Typography component="span" sx={{ ml: 0.5 }}>{trip.startLocation}</Typography>
+                    <Typography component="span" sx={{ mx: 1 }}>→</Typography>
+                    <LocationOnIcon color="primary" sx={{ verticalAlign: "middle", transform: "rotate(180deg)" }} />
+                    <Typography component="span" sx={{ ml: 0.5 }}>{trip.endLocation}</Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
+                      <CalendarTodayIcon fontSize="small" color="action" />
+                      <Typography sx={{ ml: 0.5 }}>{formatDate(trip.date)}</Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
+                      <AccessTimeIcon fontSize="small" color="action" />
+                      <Typography sx={{ ml: 0.5 }}>{formatTime(trip.date)}</Typography>
+                    </Box>
                   </Box>
                   <Typography sx={{ mb: 1 }}>
-                    <LocationOn color="secondary" sx={{ verticalAlign: 'middle' }} /> {trip.startLocation} &rarr;{' '}
-                    <LocationOn color="primary" sx={{ verticalAlign: 'middle', transform: 'rotate(180deg)' }} /> {trip.endLocation}
+                    <strong>Distance:</strong> {mapsLoaded ? (distances[trip.id] ?? "Loading...") : "N/A"}
                   </Typography>
-                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                    <CalendarMonthIcon sx={{ mr: 0.5 }} /> {formatDate(trip.date)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                    <AccessTimeIcon sx={{ mr: 0.5 }} /> {formatTime(trip.date)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    <b>Distance:</b> {distances[trip.id] ?? 'Loading...'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
-                    <PeopleIcon sx={{ mr: 0.5 }} /> Seats: {trip.seatsAvailable ?? 'N/A'}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                    {trip.description || 'No description'}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <PeopleIcon fontSize="small" color="action" />
+                    <Typography>{`Seats Left: ${trip.seatsAvailable ?? "N/A"}`}</Typography>
+                  </Box>
+                  <Typography sx={{ mt: 1, color: "text.secondary" }}>
+                    {trip.description || "No description"}
                   </Typography>
                 </CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pb: 2 }}>
-                  <Tooltip title={trip.uploaderName ? `Uploaded by ${trip.uploaderName}` : 'Uploader unknown'}>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={() => {
-                        if (user) onNavigate(`/book-trip/${trip.id}`);
-                        else alert('Please login to book.');
-                      }}
-                      sx={{ borderRadius: 2, textTransform: 'none' }}
-                    >
-                      Book
-                    </Button>
+                <Box sx={{ display: "flex", justifyContent: "space-between", p: 2 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    sx={{ borderRadius: 2, textTransform: "none" }}
+                    onClick={() => {
+                      if (!user) {
+                        alert("Please login to book a trip.");
+                        return;
+                      }
+                      onNavigate(`/book-trip/${trip.id}`);
+                    }}
+                  >
+                    Book
+                  </Button>
+                  <Tooltip title="More info">
+                    <IconButton size="small" onClick={(e) => openMenu(e, trip)}>
+                      <MoreVertIcon />
+                    </IconButton>
                   </Tooltip>
-                  <IconButton size="small" onClick={e => handleMenuOpen(e, trip)}>
-                    <MoreVertIcon />
-                  </IconButton>
                 </Box>
-
-                <Menu
-                  anchorEl={menuAnchorEl}
-                  open={isMenuOpen && selectedTrip?.id === trip.id}
-                  onClose={handleMenuClose}
-                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                >
-                  {selectedTrip && (
-                    <>
-                      <MenuItem disabled><Typography fontWeight="bold">Trip Details</Typography></MenuItem>
-                      <MenuItem>From: {selectedTrip.startLocation}</MenuItem>
-                      <MenuItem>To: {selectedTrip.endLocation}</MenuItem>
-                      <MenuItem>Date: {selectedTrip.date ? formatDate(selectedTrip.date) : 'N/A'}</MenuItem>
-                      <MenuItem>Time: {selectedTrip.date ? formatTime(selectedTrip.date) : 'N/A'}</MenuItem>
-                      <MenuItem>Vehicle: {selectedTrip.vehicleType}</MenuItem>
-                      <MenuItem>Seats: {selectedTrip.seatsAvailable}</MenuItem>
-                      <MenuItem>Description: {selectedTrip.description || 'No description'}</MenuItem>
-                      <MenuItem>Vehicle Number: {selectedTrip.vehicleNumber}</MenuItem>
-                      <MenuItem>License#: {selectedTrip.license}</MenuItem>
-                      <MenuItem>Uploaded by: {selectedTrip.uploaderName || 'Unknown'}</MenuItem>
-                    </>
-                  )}
-                </Menu>
               </Card>
             </Grid>
-          ))
-        )}
-      </Grid>
+          ))}
+        </Grid>
+      )}
 
-      {/* Show TripMap on selected trip */}
-      {selectedTrip && googleMapsApiKey && (
+      {/* Trip Details Menu */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={isMenuOpen}
+        onClose={closeMenu}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        {selectedTrip && (
+          <>
+            <MenuItem disabled><Typography variant="subtitle1" fontWeight="bold">Trip Details</Typography></MenuItem>
+            <MenuItem>From: {selectedTrip.startLocation}</MenuItem>
+            <MenuItem>To: {selectedTrip.endLocation}</MenuItem>
+            <MenuItem>Date: {formatDate(selectedTrip.date)}</MenuItem>
+            <MenuItem>Time: {formatTime(selectedTrip.date)}</MenuItem>
+            <MenuItem>Vehicle: {selectedTrip.vehicleType}</MenuItem>
+            <MenuItem>Seats Left: {selectedTrip.seatsAvailable}</MenuItem>
+            <MenuItem>Description: {selectedTrip.description || "No description"}</MenuItem>
+            <MenuItem>Vehicle Number: {selectedTrip.vehicleNumber}</MenuItem>
+            <MenuItem>License Number: {selectedTrip.license}</MenuItem>
+            <MenuItem>Uploaded by: {selectedTrip.uploaderName || "Unknown"}</MenuItem>
+          </>
+        )}
+      </Menu>
+
+      {/* Trip Route & Info Map */}
+      {selectedTrip && mapsLoaded && (
         <Box mt={4}>
-          <Typography variant="h6" gutterBottom>Trip Route & Info</Typography>
-          <TripMap trip={selectedTrip} apiKey={googleMapsApiKey} />
+          <Typography variant="h5" gutterBottom>Trip Route & Info</Typography>
+          <TripMap trip={selectedTrip} apiKey={mapsLoaded ? undefined : ""} />
         </Box>
       )}
     </Container>
   );
-
-  function handleMenuOpen(event, trip) {
-    setMenuAnchorEl(event.currentTarget);
-    setSelectedTrip(trip);
-  }
-
-  function handleMenuClose() {
-    setMenuAnchorEl(null);
-    setSelectedTrip(null);
-  }
 }

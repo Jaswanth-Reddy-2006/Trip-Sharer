@@ -1,7 +1,4 @@
 import React, { useState, useRef } from "react";
-import { Navigate } from "react-router-dom";
-import { collection, addDoc } from "firebase/firestore";
-import { db, auth } from "../firebase";
 import {
   Container,
   TextField,
@@ -13,14 +10,22 @@ import {
   Select,
   MenuItem,
   InputAdornment,
-  IconButton
+  IconButton,
+  CircularProgress,
+  Alert,
+  Tooltip,
 } from "@mui/material";
-import { LoadScript, Autocomplete } from "@react-google-maps/api";
+import { Autocomplete } from "@react-google-maps/api";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
+import MapIcon from "@mui/icons-material/Map";
+import { collection, addDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import ModalPicker from "./ModalPicker";
+import { validateCreateTripForm as validate } from "./validation";
 
-const libraries = ["places"];
+const vehicleTypes = ["Bike", "Scooter", "Car"];
 
-export default function CreateTrip({ user, onNavigate }) {
+export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) {
   const [formData, setFormData] = useState({
     startLocation: "",
     endLocation: "",
@@ -30,150 +35,147 @@ export default function CreateTrip({ user, onNavigate }) {
     description: "",
     seatsAvailable: "",
     vehicleNumber: "",
-    licenseNumber: ""
+    licenseNumber: "",
   });
 
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [openPicker, setOpenPicker] = useState(false);
+  const [pickerField, setPickerField] = useState(null);
+  const [submitError, setSubmitError] = useState("");
 
-  const startAutocomplete = useRef(null);
-  const endAutocomplete = useRef(null);
+  const startRef = useRef(null);
+  const endRef = useRef(null);
 
-  if (!user) return <Navigate to="/auth" />;
+  const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
-  const vehiclePattern = /^[A-Z]{2}\d{2}[A-Z]{2}\d{4}$/;
-  const licensePattern = /^DL[-\s]?[A-Z0-9]{13}$/i;
+  if (!user) return null;
 
-  const handlePlaceChanged = (type) => {
-    const auto = type === "start" ? startAutocomplete.current : endAutocomplete.current;
-    if (auto) {
-      const place = auto.getPlace();
-      if (place && place.formatted_address) {
-        setFormData((prev) => ({
-          ...prev,
-          [type + "Location"]: place.formatted_address
-        }));
-        setErrors((prev) => {
-          const copy = { ...prev };
-          delete copy[type + "Location"];
-          return copy;
-        });
-      }
-    }
-  };
-
-  // Reverse geocode to get address from coordinates
+  // Reverse geocode helper
   async function reverseGeocode(lat, lng) {
+    if (!googleMapsApiKey) return null;
     try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`
+      const resp = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${googleMapsApiKey}`
       );
-      const data = await response.json();
+      const data = await resp.json();
       if (data.status === "OK" && data.results.length) {
         return data.results[0].formatted_address;
+      } else {
+        return null;
       }
-    } catch (err) {
-      console.error("Reverse geocode failed", err);
+    } catch (e) {
+      console.error(e);
+      return null;
     }
-    return null;
   }
 
-  const useCurrentLocation = () => {
+  // Google Places autocomplete place changed
+  function onPlaceChanged(field) {
+    const ref = field === "startLocation" ? startRef.current : endRef.current;
+    if (!ref) return;
+    const place = ref.getPlace();
+    if (place && place.formatted_address) {
+      setFormData((f) => ({ ...f, [field]: place.formatted_address }));
+      setErrors((e) => {
+        const copy = { ...e };
+        delete copy[field];
+        return copy;
+      });
+    }
+  }
+
+  // Input change handler
+  function handleInput(e) {
+    const { name, value } = e.target;
+    const val =
+      name === "vehicleNumber" || name === "licenseNumber"
+        ? value.toUpperCase()
+        : value;
+    setFormData((f) => ({ ...f, [name]: val }));
+    if (errors[name]) {
+      setErrors((e) => {
+        const copy = { ...e };
+        delete copy[name];
+        return copy;
+      });
+    }
+  }
+
+  // Use browser geolocation to get current position
+  function useLocation() {
     if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
+      alert("Geolocation not supported");
       return;
     }
     setLoadingLocation(true);
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const address = await reverseGeocode(lat, lng);
-
-        setFormData((prev) => ({
-          ...prev,
-          startLocation: address || `Current Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const addr = await reverseGeocode(lat, lng);
+        setFormData((f) => ({
+          ...f,
+          startLocation: addr || `Current location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
         }));
-        setErrors((prev) => {
-          const copy = { ...prev };
+        setErrors((e) => {
+          const copy = { ...e };
           delete copy.startLocation;
           return copy;
         });
         setLoadingLocation(false);
       },
       () => {
-        alert("Unable to retrieve your location");
+        alert("Failed to get location");
         setLoadingLocation(false);
       }
     );
-  };
+  }
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    const val = name === "vehicleNumber" || name === "licenseNumber" ? value.toUpperCase() : value;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: val
-    }));
-    if (errors[name]) {
-      setErrors((prev) => {
-        const copy = { ...prev };
-        delete copy[name];
-        return copy;
-      });
-    }
-  };
+  // Open the map picker modal for a given field
+  function openPickerFor(field) {
+    setPickerField(field);
+    setOpenPicker(true);
+  }
 
-  const validate = () => {
-    let newErrors = {};
-    [
-      "startLocation",
-      "endLocation",
-      "date",
-      "time",
-      "vehicleType",
-      "seatsAvailable",
-      "vehicleNumber",
-      "licenseNumber"
-    ].forEach((field) => {
-      if (!formData[field] || formData[field].trim() === "") {
-        newErrors[field] = `Please enter ${field.replace(/([A-Z])/g, " $1").toLowerCase()}`;
-      }
+  // When a location is selected from modal picker
+  function onPickerSelect(data) {
+    if (!pickerField) return;
+    setFormData((f) => ({ ...f, [pickerField]: data.address }));
+    setErrors((e) => {
+      const copy = { ...e };
+      delete copy[pickerField];
+      return copy;
     });
-    if (formData.vehicleNumber && !vehiclePattern.test(formData.vehicleNumber)) {
-      newErrors.vehicleNumber = "Vehicle number must be in the format TS08HD2006";
-    }
-    if (formData.licenseNumber) {
-      if (formData.licenseNumber.length !== 16) {
-        newErrors.licenseNumber = "License number must be exactly 16 characters";
-      } else if (!licensePattern.test(formData.licenseNumber)) {
-        newErrors.licenseNumber = "License number invalid, e.g., 'DL-142011223344'";
-      }
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setPickerField(null);
+    setOpenPicker(false);
+  }
 
-  const handleSubmit = async () => {
-    if (!validate()) {
-      setTimeout(() => setErrors({}), 3000);
-      return;
-    }
+  function validateForm() {
+    const errs = validate(formData);
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function submit() {
+    setSubmitError("");
+    if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const combinedDate = new Date(`${formData.date}T${formData.time}`);
+      const dateObj = new Date(`${formData.date}T${formData.time}`);
       await addDoc(collection(db, "trips"), {
         startLocation: formData.startLocation.trim(),
         endLocation: formData.endLocation.trim(),
-        date: combinedDate,
+        date: dateObj,
         vehicleType: formData.vehicleType,
         description: formData.description.trim(),
-        seatsAvailable: Number(formData.seatsAvailable),
-        vehicleNumber: formData.vehicleNumber.trim(),
-        licenseNumber: formData.licenseNumber.trim(),
+        seatsAvailable: Math.max(1, Number(formData.seatsAvailable)),
+        vehicleNumber: formData.vehicleNumber,
+        licenseNumber: formData.licenseNumber,
         uploaderId: auth.currentUser.uid,
-        uploaderName: auth.currentUser.displayName || auth.currentUser.email || "Anonymous"
+        uploaderName:
+          auth.currentUser.displayName || auth.currentUser.email || "Anonymous",
       });
       setFormData({
         startLocation: "",
@@ -184,168 +186,263 @@ export default function CreateTrip({ user, onNavigate }) {
         description: "",
         seatsAvailable: "",
         vehicleNumber: "",
-        licenseNumber: ""
+        licenseNumber: "",
       });
       onNavigate("/");
-    } catch (error) {
-      alert("Failed to create trip. Please try again.");
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setSubmitError("Failed to create trip. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-  };
+  }
 
   return (
-    <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={libraries}>
-      <Container maxWidth="sm" sx={{ mt: 4 }}>
-        <Typography variant="h5" mb={3}>
-          Create New Trip
-        </Typography>
+    <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
+      <Typography variant="h5" gutterBottom>
+        Create New Trip
+      </Typography>
 
-        <Autocomplete
-          onLoad={(autocomplete) => (startAutocomplete.current = autocomplete)}
-          onPlaceChanged={() => handlePlaceChanged("start")}
-        >
-          <TextField
-            label="Start Location"
-            name="startLocation"
-            value={formData.startLocation}
-            onChange={(e) => setFormData((prev) => ({ ...prev, startLocation: e.target.value }))}
-            fullWidth
-            required
-            margin="normal"
-            error={!!errors.startLocation}
-            helperText={errors.startLocation}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton onClick={useCurrentLocation} edge="end" title="Use Current Location" disabled={loadingLocation}>
-                    <MyLocationIcon />
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-        </Autocomplete>
+      {submitError && <Alert severity="error">{submitError}</Alert>}
 
-        <Autocomplete
-          onLoad={(autocomplete) => (endAutocomplete.current = autocomplete)}
-          onPlaceChanged={() => handlePlaceChanged("end")}
-        >
-          <TextField
-            label="End Location"
-            name="endLocation"
-            value={formData.endLocation}
-            onChange={handleInputChange}
-            fullWidth
-            required
-            margin="normal"
-            error={!!errors.endLocation}
-            helperText={errors.endLocation}
-          />
-        </Autocomplete>
+      {!googleMapsApiKey && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Google Maps API key missing. Map features disabled.
+        </Alert>
+      )}
+
+      {mapsError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load Google Maps. Map features disabled.
+        </Alert>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        noValidate
+      >
+        {mapsLoaded && !mapsError ? (
+          <>
+            <Autocomplete
+              onLoad={(ref) => (startRef.current = ref)}
+              onPlaceChanged={() => onPlaceChanged("startLocation")}
+            >
+              <TextField
+                name="startLocation"
+                label="Start Location"
+                value={formData.startLocation}
+                onChange={handleInput}
+                margin="normal"
+                fullWidth
+                error={!!errors.startLocation}
+                helperText={errors.startLocation}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      {loadingLocation ? (
+                        <CircularProgress size={20} />
+                      ) : (
+                        <Tooltip title="Use Current Location">
+                          <IconButton onClick={useLocation} edge="end">
+                            <MyLocationIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="Pick on Map">
+                        <IconButton onClick={() => openPickerFor("startLocation")} edge="end">
+                          <MapIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Autocomplete>
+
+            <Autocomplete
+              onLoad={(ref) => (endRef.current = ref)}
+              onPlaceChanged={() => onPlaceChanged("endLocation")}
+            >
+              <TextField
+                name="endLocation"
+                label="End Location"
+                value={formData.endLocation}
+                onChange={handleInput}
+                margin="normal"
+                fullWidth
+                error={!!errors.endLocation}
+                helperText={errors.endLocation}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title="Pick on Map">
+                        <IconButton onClick={() => openPickerFor("endLocation")} edge="end">
+                          <MapIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Autocomplete>
+          </>
+        ) : (
+          <>
+            <TextField
+              name="startLocation"
+              label="Start Location"
+              value={formData.startLocation}
+              onChange={handleInput}
+              margin="normal"
+              fullWidth
+              error={!!errors.startLocation}
+              helperText={errors.startLocation}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {loadingLocation ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                      <Tooltip title="Use Current Location">
+                        <IconButton onClick={useLocation} edge="end">
+                          <MyLocationIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            <TextField
+              name="endLocation"
+              label="End Location"
+              value={formData.endLocation}
+              onChange={handleInput}
+              margin="normal"
+              fullWidth
+              error={!!errors.endLocation}
+              helperText={errors.endLocation}
+            />
+          </>
+        )}
 
         <TextField
-          label="Date"
           name="date"
+          label="Date"
           type="date"
           value={formData.date}
-          onChange={handleInputChange}
-          fullWidth
-          required
+          onChange={handleInput}
           margin="normal"
+          fullWidth
           error={!!errors.date}
           helperText={errors.date}
           InputLabelProps={{ shrink: true }}
         />
 
         <TextField
-          label="Time"
           name="time"
+          label="Time"
           type="time"
           value={formData.time}
-          onChange={handleInputChange}
-          fullWidth
-          required
+          onChange={handleInput}
           margin="normal"
+          fullWidth
           error={!!errors.time}
           helperText={errors.time}
           InputLabelProps={{ shrink: true }}
         />
 
-        <FormControl fullWidth required margin="normal" error={!!errors.vehicleType}>
+        <FormControl margin="normal" fullWidth error={!!errors.vehicleType}>
           <InputLabel id="vehicle-type-label">Vehicle Type</InputLabel>
           <Select
             labelId="vehicle-type-label"
             name="vehicleType"
             value={formData.vehicleType}
-            onChange={handleInputChange}
             label="Vehicle Type"
+            onChange={handleInput}
           >
             <MenuItem value="">
               <em>None</em>
             </MenuItem>
-            <MenuItem value="Bike">Bike</MenuItem>
-            <MenuItem value="Scooter">Scooter</MenuItem>
-            <MenuItem value="Car">Car</MenuItem>
+            {vehicleTypes.map((v) => (
+              <MenuItem key={v} value={v}>
+                {v}
+              </MenuItem>
+            ))}
           </Select>
-          {!!errors.vehicleType && <Typography color="error">{errors.vehicleType}</Typography>}
+          {errors.vehicleType && (
+            <Typography variant="caption" color="error">
+              {errors.vehicleType}
+            </Typography>
+          )}
         </FormControl>
 
         <TextField
-          label="Available Seats"
           name="seatsAvailable"
+          label="Seats Available"
           type="number"
           value={formData.seatsAvailable}
-          onChange={handleInputChange}
-          fullWidth
-          required
+          onChange={handleInput}
           margin="normal"
+          fullWidth
           error={!!errors.seatsAvailable}
           helperText={errors.seatsAvailable}
           inputProps={{ min: 1 }}
         />
 
         <TextField
-          label="Vehicle Number"
           name="vehicleNumber"
+          label="Vehicle Number"
           value={formData.vehicleNumber}
-          onChange={handleInputChange}
-          fullWidth
-          required
+          onChange={handleInput}
           margin="normal"
+          fullWidth
           error={!!errors.vehicleNumber}
           helperText={errors.vehicleNumber}
+          inputProps={{ style: { textTransform: "uppercase" } }}
         />
 
         <TextField
-          label="License Number"
           name="licenseNumber"
+          label="License Number"
           value={formData.licenseNumber}
-          onChange={handleInputChange}
-          fullWidth
-          required
+          onChange={handleInput}
           margin="normal"
+          fullWidth
           error={!!errors.licenseNumber}
           helperText={errors.licenseNumber}
+          inputProps={{ style: { textTransform: "uppercase" } }}
         />
 
         <TextField
-          label="Description"
           name="description"
+          label="Description"
+          value={formData.description}
+          onChange={handleInput}
+          margin="normal"
+          fullWidth
           multiline
           rows={3}
-          value={formData.description}
-          onChange={handleInputChange}
-          fullWidth
-          margin="normal"
         />
 
-        <Box mt={3}>
-          <Button variant="contained" fullWidth onClick={handleSubmit} disabled={submitting}>
+        <Box mt={2}>
+          <Button type="submit" variant="contained" color="primary" fullWidth disabled={submitting}>
             {submitting ? "Creating..." : "Create Trip"}
           </Button>
         </Box>
-      </Container>
-    </LoadScript>
+      </form>
+
+      {openPicker && (
+        <ModalPicker
+          open={openPicker}
+          onClose={() => setOpenPicker(false)}
+          onSelect={onPickerSelect}
+        />
+      )}
+    </Container>
   );
 }

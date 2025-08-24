@@ -6,54 +6,64 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 
 export default function About() {
   return (
-    <Container maxWidth="md" sx={{ my: 6 }}>
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Typography variant="h3" fontWeight={900} color="primary" gutterBottom>
-          Our Mission & Vision
-        </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto' }}>
-          Sharo is more than a ride-sharing app—it's a movement for smarter, greener, friendlier travel.
-        </Typography>
-      </Box>
-      <Grid container spacing={3} justifyContent="center" sx={{ mb: 5 }}>
-        <Grid item xs={12} sm={4}>
-          <Paper elevation={3} sx={{ p: 3, textAlign: 'center', borderRadius: 3 }}>
-            <Avatar sx={{ bgcolor: 'success.light', mx: 'auto', mb: 1 }}><EmojiNatureIcon fontSize="large" /></Avatar>
-            <Typography variant="h6" fontWeight={700} color="text.primary">
-              Eco Friendly
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Every trip you share saves fuel, reduces emissions, and keeps the planet greener.
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Paper elevation={3} sx={{ p: 3, textAlign: 'center', borderRadius: 3 }}>
-            <Avatar sx={{ bgcolor: 'primary.light', mx: 'auto', mb: 1 }}><GroupsIcon fontSize="large" /></Avatar>
-            <Typography variant="h6" fontWeight={700} color="text.primary">
-              Community First
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              We connect trusted riders and drivers, creating friendships and building a reliable network.
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
+      <Typography variant="h3" sx={{ fontWeight: 800, mb: 2 }}>
+        Our Mission & Vision
+      </Typography>
+      <Typography variant="h6" color="text.secondary" sx={{ mb: 4, maxWidth: 900 }}>
+        Sharo is more than ride-sharing—it's a movement for smarter, greener, friendlier travel.
+        We’re building a community where people share rides, cut costs, and reduce their carbon footprint.
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', mr: 1.5 }}>
+                <EmojiNatureIcon />
+              </Avatar>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Eco Friendly</Typography>
+            </Box>
+            <Typography color="text.secondary">
+              Every ride shared saves fuel and reduces emissions, helping keep the planet greener.
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={4}>
-          <Paper elevation={3} sx={{ p: 3, textAlign: 'center', borderRadius: 3 }}>
-            <Avatar sx={{ bgcolor: 'teal', mx: 'auto', mb: 1 }}><LocalOfferIcon fontSize="large" /></Avatar>
-            <Typography variant="h6" fontWeight={700} color="text.primary">
-              Save More
+
+        <Grid item xs={12} md={4}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', mr: 1.5 }}>
+                <GroupsIcon />
+              </Avatar>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Community First</Typography>
+            </Box>
+            <Typography color="text.secondary">
+              We connect trusted riders and drivers, building lasting relationships and a reliable network.
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Traveling together means sharing costs—make journeys affordable for everyone.
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', mr: 1.5 }}>
+                <LocalOfferIcon />
+              </Avatar>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Save More</Typography>
+            </Box>
+            <Typography color="text.secondary">
+              Share costs and make travel more affordable for everyone involved.
             </Typography>
           </Paper>
         </Grid>
       </Grid>
-      <Box sx={{ textAlign: "center", mt: 3 }}>
-        <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+
+      <Box sx={{ mt: { xs: 5, md: 6 } }}>
+        <Typography variant="body1" sx={{ mb: 1 }}>
           Whether you're offering a seat or searching for a ride, you're part of the Sharo family.
-          <br />
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 700 }}>
           Start traveling the smart way—choose Sharo for your next trip!
         </Typography>
       </Box>

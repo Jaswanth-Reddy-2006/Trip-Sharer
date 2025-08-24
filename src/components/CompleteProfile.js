@@ -30,19 +30,28 @@ export default function CompleteProfile() {
 
   useEffect(() => {
     async function fetchProfile() {
-      if (!user) return;
-      setLoading(true);
-      const userRef = doc(db, "users", user.uid);
-      const docSnap = await getDoc(userRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setForm({
-          name: data.name || "",
-          gender: data.gender || "",
-          phone: data.phone || "",
-        });
+      if (!user) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      setLoading(true);
+      setError('');
+      try {
+        const userRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(userRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setForm({
+            name: data.name || "",
+            gender: data.gender || "",
+            phone: data.phone || "",
+          });
+        }
+      } catch (err) {
+        setError("Failed to load profile data.");
+      } finally {
+        setLoading(false);
+      }
     }
     fetchProfile();
   }, [user]);
@@ -54,11 +63,15 @@ export default function CompleteProfile() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    // Basic validation
     if (!form.name || !form.gender || !form.phone) {
       setError("Please fill in all required fields.");
       return;
     }
+    if (!user) {
+      setError("Not authenticated. Please log in.");
+      return;
+    }
+
     setSaving(true);
     try {
       await setDoc(
@@ -67,13 +80,13 @@ export default function CompleteProfile() {
           ...form,
           profileComplete: true,
           createdAt: new Date(),
-          uid: user.uid, // Immutable ID token
+          uid: user.uid,
         },
         { merge: true }
       );
       navigate("/");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to save profile.");
     } finally {
       setSaving(false);
     }
@@ -81,48 +94,46 @@ export default function CompleteProfile() {
 
   if (loading) {
     return (
-      <Container sx={{ mt: 6, textAlign: "center" }}>
-        <CircularProgress />
-        <Typography>Loading profile data...</Typography>
+      <Container maxWidth="sm" sx={{ py: 6 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <CircularProgress size={24} />
+          <Typography>Loading profile data...</Typography>
+        </Box>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="sm" sx={{ mt: 6 }}>
-      <Typography variant="h5" gutterBottom>
+    <Container maxWidth="sm" sx={{ py: 6 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
         Complete Your Profile
       </Typography>
-      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-        User ID: {user.uid}
-      </Typography>
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        noValidate
-        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-      >
+
+      <Box component="form" onSubmit={handleSubmit}>
         <TextField
           label="Full Name"
           name="name"
           value={form.name}
           onChange={handleChange}
-          required
           fullWidth
+          required
+          margin="normal"
         />
         <TextField
-          select
           label="Gender"
           name="gender"
+          select
           value={form.gender}
           onChange={handleChange}
-          required
           fullWidth
+          required
+          margin="normal"
         >
           {genders.map((option) => (
             <MenuItem key={option} value={option}>
@@ -131,17 +142,22 @@ export default function CompleteProfile() {
           ))}
         </TextField>
         <TextField
-          label="Phone Number"
+          label="Phone"
           name="phone"
+          type="tel"
           value={form.phone}
           onChange={handleChange}
-          required
           fullWidth
-          type="tel"
-          inputProps={{ pattern: "[0-9]{10,15}" }}
-          helperText="Enter valid phone number"
+          required
+          margin="normal"
         />
-        <Button type="submit" variant="contained" color="primary" disabled={saving}>
+
+        <Button
+          type="submit"
+          variant="contained"
+          sx={{ mt: 2 }}
+          disabled={saving}
+        >
           {saving ? "Saving..." : "Save Profile"}
         </Button>
       </Box>
