@@ -18,7 +18,6 @@ const genders = ["Male", "Female", "Other"];
 export default function CompleteProfile() {
   const navigate = useNavigate();
   const user = auth.currentUser;
-
   const [form, setForm] = useState({
     name: "",
     gender: "",
@@ -71,7 +70,6 @@ export default function CompleteProfile() {
       setError("Not authenticated. Please log in.");
       return;
     }
-
     setSaving(true);
     try {
       await setDoc(
@@ -94,73 +92,61 @@ export default function CompleteProfile() {
 
   if (loading) {
     return (
-      <Container maxWidth="sm" sx={{ py: 6 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <CircularProgress size={24} />
-          <Typography>Loading profile data...</Typography>
-        </Box>
-      </Container>
+      <Box sx={{ p: 3, textAlign: "center" }}>
+        <CircularProgress />
+        <Typography>Loading profile data...</Typography>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="sm" sx={{ py: 6 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
+    <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Typography variant="h5" gutterBottom>
         Complete Your Profile
       </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box component="form" onSubmit={handleSubmit}>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <form onSubmit={handleSubmit} autoComplete="off">
         <TextField
-          label="Full Name"
+          label="Name"
           name="name"
+          fullWidth
+          margin="normal"
           value={form.name}
           onChange={handleChange}
-          fullWidth
           required
-          margin="normal"
         />
-        <TextField
-          label="Gender"
-          name="gender"
-          select
-          value={form.gender}
-          onChange={handleChange}
-          fullWidth
-          required
-          margin="normal"
-        >
-          {genders.map((option) => (
-            <MenuItem key={option} value={option}>
-              {option}
-            </MenuItem>
-          ))}
-        </TextField>
         <TextField
           label="Phone"
           name="phone"
-          type="tel"
+          fullWidth
+          margin="normal"
           value={form.phone}
           onChange={handleChange}
-          fullWidth
           required
-          margin="normal"
         />
-
+        <TextField
+          select
+          label="Gender"
+          name="gender"
+          fullWidth
+          margin="normal"
+          value={form.gender}
+          onChange={handleChange}
+          required
+        >
+          {genders.map((option) => (
+            <MenuItem key={option} value={option}>{option}</MenuItem>
+          ))}
+        </TextField>
         <Button
-          type="submit"
           variant="contained"
-          sx={{ mt: 2 }}
+          type="submit"
           disabled={saving}
+          sx={{ mt: 2, borderRadius: 2 }}
         >
           {saving ? "Saving..." : "Save Profile"}
         </Button>
-      </Box>
+      </form>
     </Container>
   );
 }

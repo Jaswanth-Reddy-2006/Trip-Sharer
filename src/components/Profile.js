@@ -10,16 +10,19 @@ import {
   MenuItem,
 } from "@mui/material";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 import { db, auth } from "../firebase";
 
 export default function Profile() {
   const user = auth.currentUser;
+  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     name: "",
     gender: "",
     phone: "",
   });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -63,14 +66,17 @@ export default function Profile() {
     e.preventDefault();
     setError("");
     setSuccess("");
+
     if (!form.name || !form.gender || !form.phone) {
-      setError("Please fill in all required fields.");
+      setError("Please fill all required fields");
       return;
     }
+
     if (!user) {
-      setError("Not authenticated.");
+      setError("Not authenticated");
       return;
     }
+
     setSaving(true);
     try {
       await setDoc(
@@ -78,9 +84,9 @@ export default function Profile() {
         { ...form, profileComplete: true },
         { merge: true }
       );
-      setSuccess("Profile updated successfully.");
+      setSuccess("Profile updated successfully");
     } catch (err) {
-      setError(err.message || "Update failed.");
+      setError(err.message || "Update failed");
     } finally {
       setSaving(false);
     }
@@ -88,65 +94,87 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <Container maxWidth="sm" sx={{ py: 6 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <CircularProgress size={24} />
-          <Typography>Loading profile...</Typography>
-        </Box>
+      <Container sx={{ mt: 4, textAlign: "center" }}>
+        <CircularProgress />
+        <Typography>Loading profile...</Typography>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="sm" sx={{ py: 6 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
+    <Container maxWidth="sm" sx={{ mt: 4 }}>
+      <Typography variant="h5" gutterBottom>
         Your Profile
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-      <Box component="form" onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} noValidate>
         <TextField
-          label="Full Name"
+          label="Name"
           name="name"
           value={form.name}
           onChange={handleChange}
           fullWidth
-          required
           margin="normal"
+          required
         />
         <TextField
+          select
           label="Gender"
           name="gender"
-          select
           value={form.gender}
           onChange={handleChange}
           fullWidth
-          required
           margin="normal"
+          required
         >
           {["Male", "Female", "Other"].map((option) => (
-            <MenuItem key={option} value={option}>
-              {option}
-            </MenuItem>
+            <MenuItem key={option} value={option}>{option}</MenuItem>
           ))}
         </TextField>
         <TextField
           label="Phone"
           name="phone"
-          type="tel"
           value={form.phone}
           onChange={handleChange}
           fullWidth
-          required
           margin="normal"
+          required
         />
 
-        <Button type="submit" variant="contained" sx={{ mt: 2 }} disabled={saving}>
-          {saving ? "Updating..." : "Update Profile"}
-        </Button>
-      </Box>
+        <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save Profile"}
+          </Button>
+
+          <Button
+            variant="outlined"
+            onClick={() => navigate("/my-bookings")}
+          >
+            My Bookings
+          </Button>
+        </Box>
+
+        <Box sx={{ mt: 3 }}>
+          <Button
+            color="error"
+            variant="text"
+            onClick={() => {
+              auth.signOut();
+              navigate("/auth");
+            }}
+          >
+            Logout
+          </Button>
+        </Box>
+      </form>
     </Container>
   );
 }

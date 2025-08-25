@@ -1,174 +1,163 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import {
-  collection, query, where, getDocs, doc, getDoc, deleteDoc,
-} from 'firebase/firestore';
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
   Card,
-  CardContent,
-  Grid,
-  CircularProgress,
-  Box,
   Button,
+  CircularProgress,
+  Alert,
   Tabs,
   Tab,
-  Alert,
-} from '@mui/material';
+  Box,
+} from "@mui/material";
+import { collection, query, getDocs, where, doc, getDoc, deleteDoc } from "firebase/firestore";
+import { db } from "../firebase";
 
 function formatDateTime(timestamp) {
-  if (!timestamp) return 'N/A';
-  const dateObj = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-  return dateObj.toLocaleString();
+  if (!timestamp) return "N/A";
+  const dt = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return dt.toLocaleString();
 }
 
-export default function MyBookings({ user }) {
+export default function MyBookings({ user, onNavigate }) {
   const [tab, setTab] = useState(0);
   const [bookings, setBookings] = useState([]);
   const [postedTrips, setPostedTrips] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(null);
 
   useEffect(() => {
     if (!user) {
-      setError('Please login to view your bookings.');
+      setError("Please log in to view bookings.");
       setLoading(false);
       return;
     }
 
-    async function fetchAll() {
+    async function fetchData() {
       setLoading(true);
-      setError('');
+      setError("");
       try {
-        // bookings made by user
-        const bookingsRef = collection(db, 'bookings');
-        const q1 = query(bookingsRef, where('userId', '==', user.uid));
-        const snapshot = await getDocs(q1);
-        const userBookings = [];
-        for (const docSnap of snapshot.docs) {
-          const bookingData = docSnap.data();
-          const tripRef = doc(db, 'trips', bookingData.tripId);
-          const tripSnap = await getDoc(tripRef);
-          if (tripSnap.exists()) {
-            userBookings.push({
-              id: docSnap.id,
-              bookedAt: bookingData.bookedAt?.toDate ? bookingData.bookedAt.toDate() : bookingData.bookedAt,
-              bookingSeats: bookingData.bookingSeats,
-              trip: { id: tripSnap.id, ...tripSnap.data() },
+        // User bookings
+        const bookingsRef = collection(db, "bookings");
+        const q1 = query(bookingsRef, where("userId", "==", user.uid));
+        const bookingSnap = await getDocs(q1);
+        const nowBookings = [];
+        for (const bDoc of bookingSnap.docs) {
+          const bData = bDoc.data();
+          const tripRef = doc(db, "trips", bData.tripId);
+          const tripDoc = await getDoc(tripRef);
+          if (tripDoc.exists()) {
+            nowBookings.push({
+              id: bDoc.id,
+              booking: bData,
+              trip: { id: tripDoc.id, ...tripDoc.data() },
             });
           }
         }
-        setBookings(userBookings);
+        setBookings(nowBookings);
 
-        // trips posted by user
-        const tripsRef = collection(db, 'trips');
-        const q2 = query(tripsRef, where('uploaderId', '==', user.uid));
-        const tripSnaps = await getDocs(q2);
-        const myTrips = tripSnaps.docs.map(d => ({ id: d.id, ...d.data() }));
-        setPostedTrips(myTrips);
-      } catch (err) {
-        setError('Failed to load bookings.');
+        // User posted trips
+        const tripsRef = collection(db, "trips");
+        const q2 = query(tripsRef, where("uploaderId", "==", user.uid));
+        const tripSnap = await getDocs(q2);
+        setPostedTrips(tripSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        setError("Failed to load bookings.");
       } finally {
         setLoading(false);
       }
     }
 
-    fetchAll();
+    fetchData();
   }, [user]);
 
-  const getTripStatus = (trip) => {
+  const getStatus = (trip) => {
     if (!trip.date) return "N/A";
-    const dateObj = trip.date?.toDate ? trip.date.toDate() : new Date(trip.date);
-    return (dateObj > new Date()) ? "Active" : "Expired";
+    const dt = trip.date.toDate ? trip.date.toDate() : new Date(trip.date);
+    return dt > new Date() ? "Active" : "Expired";
   };
 
   const cancelBooking = async (bookingId) => {
-    if (!window.confirm('Are you sure you want to cancel this booking?')) return;
+    if (!window.confirm("Cancel this booking?")) return;
     setCancelling(bookingId);
     try {
-      await deleteDoc(doc(db, 'bookings', bookingId));
+      await deleteDoc(doc(db, "bookings", bookingId));
       setBookings((prev) => prev.filter((b) => b.id !== bookingId));
-    } catch (err) {
-      alert('Failed to cancel booking. Please try again.');
+    } catch {
+      alert("Failed to cancel booking.");
     } finally {
       setCancelling(null);
     }
   };
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
-        My Bookings & My Posted Trips
+    <Container sx={{ mt: 4 }}>
+      <Typography variant="h5" gutterBottom>
+        My Bookings & Posted Trips
       </Typography>
 
-      <Tabs value={tab} onChange={(_, val) => setTab(val)} sx={{ mb: 2 }} aria-label="booking trip tabs">
-        <Tab label="My Bookings" />
-        <Tab label="My Posted Trips" />
+      <Tabs value={tab} onChange={(e, val) => setTab(val)} sx={{ mb: 2 }}>
+        <Tab label="Bookings" />
+        <Tab label="My Trips" />
       </Tabs>
 
       {loading ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <CircularProgress size={24} /> <Typography>Loading...</Typography>
-        </Box>
+        <CircularProgress />
       ) : error ? (
         <Alert severity="error">{error}</Alert>
       ) : tab === 0 ? (
         bookings.length === 0 ? (
-          <Typography color="text.secondary">No bookings yet.</Typography>
+          <Typography>No bookings found.</Typography>
         ) : (
-          <Grid container spacing={2}>
-            {bookings.map(({ id, bookingSeats, bookedAt, trip }) => (
-              <Grid item xs={12} key={id}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6">{trip.vehicleType || "Unknown Vehicle"}</Typography>
-                    <Typography color="text.secondary">
-                      From: {trip.startLocation} → To: {trip.endLocation}
-                    </Typography>
-                    <Typography>Date: {formatDateTime(trip.date)}</Typography>
-                    <Typography>Booked Seats: {bookingSeats}</Typography>
-                    <Typography>Booked On: {formatDateTime(bookedAt)}</Typography>
-                    <Box sx={{ mt: 2 }}>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        onClick={() => cancelBooking(id)}
-                        disabled={cancelling === id}
-                      >
-                        {cancelling === id ? 'Cancelling...' : 'Cancel Booking'}
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          bookings.map(({ id, booking, trip }) => (
+            <Card key={id} sx={{ mb: 2, p: 2 }}>
+              <Typography variant="h6">{trip.vehicleType}</Typography>
+              <Typography>
+                From: {trip.startLocation} → To: {trip.endLocation}
+              </Typography>
+              <Typography>Date: {formatDateTime(trip.date)}</Typography>
+              <Typography>Seats Booked: {booking.bookingSeats}</Typography>
+              <Typography>Booked On: {formatDateTime(booking.bookedAt)}</Typography>
+
+              <Button
+                variant="outlined"
+                sx={{ mt: 1, mr: 1 }}
+                onClick={() =>
+                  onNavigate(`/chat/${trip.uploaderId}`, {
+                    state: { user: { uid: trip.uploaderId, name: trip.uploaderName } },
+                  })
+                }
+              >
+                Chat with {trip.uploaderName || "Uploader"}
+              </Button>
+
+              <Button
+                variant="contained"
+                color="error"
+                sx={{ mt: 1 }}
+                onClick={() => cancelBooking(id)}
+                disabled={cancelling === id}
+              >
+                {cancelling === id ? "Cancelling..." : "Cancel Booking"}
+              </Button>
+            </Card>
+          ))
         )
       ) : postedTrips.length === 0 ? (
-        <Typography color="text.secondary">You have not posted any trips yet.</Typography>
+        <Typography>You have not posted any trips.</Typography>
       ) : (
-        <Grid container spacing={2}>
-          {postedTrips.map((trip) => (
-            <Grid item xs={12} key={trip.id}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6">{trip.vehicleType || "Unknown Vehicle"}</Typography>
-                  <Typography color="text.secondary">
-                    From: {trip.startLocation} → To: {trip.endLocation}
-                  </Typography>
-                  <Typography>Date: {formatDateTime(trip.date)}</Typography>
-                  <Typography>Vehicle No: {trip.vehicleNumber}</Typography>
-                  <Typography>License No: {trip.licenseNumber}</Typography>
-                  <Typography>Seats Available: {trip.seatsAvailable}</Typography>
-                  <Typography>Description: {trip.description}</Typography>
-                  <Typography>Status: {getTripStatus(trip)}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+        postedTrips.map((trip) => (
+          <Card key={trip.id} sx={{ mb: 2, p: 2 }}>
+            <Typography variant="h6">{trip.vehicleType}</Typography>
+            <Typography>
+              From: {trip.startLocation} → To: {trip.endLocation}
+            </Typography>
+            <Typography>Date: {formatDateTime(trip.date)}</Typography>
+            <Typography>Seats: {trip.seatsAvailable}</Typography>
+            <Typography>Status: {getStatus(trip)}</Typography>
+          </Card>
+        ))
       )}
     </Container>
   );

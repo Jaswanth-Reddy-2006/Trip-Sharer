@@ -15,12 +15,16 @@ import {
   Alert,
   Tooltip,
 } from "@mui/material";
+
 import { Autocomplete } from "@react-google-maps/api";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import MapIcon from "@mui/icons-material/Map";
+
 import { collection, addDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
+
 import ModalPicker from "./ModalPicker";
+
 import { validateCreateTripForm as validate } from "./validation";
 
 const vehicleTypes = ["Bike", "Scooter", "Car"];
@@ -62,9 +66,8 @@ export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) 
       const data = await resp.json();
       if (data.status === "OK" && data.results.length) {
         return data.results[0].formatted_address;
-      } else {
-        return null;
       }
+      return null;
     } catch (e) {
       console.error(e);
       return null;
@@ -86,7 +89,6 @@ export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) 
     }
   }
 
-  // Input change handler
   function handleInput(e) {
     const { name, value } = e.target;
     const val =
@@ -174,8 +176,7 @@ export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) 
         vehicleNumber: formData.vehicleNumber,
         licenseNumber: formData.licenseNumber,
         uploaderId: auth.currentUser.uid,
-        uploaderName:
-          auth.currentUser.displayName || auth.currentUser.email || "Anonymous",
+        uploaderName: auth.currentUser.displayName || auth.currentUser.email || "Anonymous",
       });
       setFormData({
         startLocation: "",
@@ -197,173 +198,133 @@ export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) 
     }
   }
 
+  if (!mapsLoaded && !mapsError) return <CircularProgress />;
+
   return (
-    <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
-      <Typography variant="h5" gutterBottom>
+    <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Typography variant="h4" mb={3}>
         Create New Trip
       </Typography>
 
-      {submitError && <Alert severity="error">{submitError}</Alert>}
-
+      {submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
       {!googleMapsApiKey && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Google Maps API key missing. Map features disabled.
         </Alert>
       )}
-
       {mapsError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           Failed to load Google Maps. Map features disabled.
         </Alert>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        noValidate
-      >
-        {mapsLoaded && !mapsError ? (
-          <>
-            <Autocomplete
-              onLoad={(ref) => (startRef.current = ref)}
-              onPlaceChanged={() => onPlaceChanged("startLocation")}
-            >
-              <TextField
-                name="startLocation"
-                label="Start Location"
-                value={formData.startLocation}
-                onChange={handleInput}
-                margin="normal"
-                fullWidth
-                error={!!errors.startLocation}
-                helperText={errors.startLocation}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {loadingLocation ? (
-                        <CircularProgress size={20} />
-                      ) : (
-                        <Tooltip title="Use Current Location">
-                          <IconButton onClick={useLocation} edge="end">
-                            <MyLocationIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Pick on Map">
-                        <IconButton onClick={() => openPickerFor("startLocation")} edge="end">
-                          <MapIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Autocomplete>
-
-            <Autocomplete
-              onLoad={(ref) => (endRef.current = ref)}
-              onPlaceChanged={() => onPlaceChanged("endLocation")}
-            >
-              <TextField
-                name="endLocation"
-                label="End Location"
-                value={formData.endLocation}
-                onChange={handleInput}
-                margin="normal"
-                fullWidth
-                error={!!errors.endLocation}
-                helperText={errors.endLocation}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip title="Pick on Map">
-                        <IconButton onClick={() => openPickerFor("endLocation")} edge="end">
-                          <MapIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Autocomplete>
-          </>
-        ) : (
-          <>
-            <TextField
-              name="startLocation"
-              label="Start Location"
-              value={formData.startLocation}
-              onChange={handleInput}
-              margin="normal"
-              fullWidth
-              error={!!errors.startLocation}
-              helperText={errors.startLocation}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    {loadingLocation ? (
-                      <CircularProgress size={20} />
-                    ) : (
-                      <Tooltip title="Use Current Location">
-                        <IconButton onClick={useLocation} edge="end">
+      <Box component="form" onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
+        <Autocomplete
+          apiKey={googleMapsApiKey}
+          onLoad={(ref) => (startRef.current = ref)}
+          onPlaceChanged={() => onPlaceChanged("startLocation")}
+        >
+          <TextField
+            label="Start Location"
+            name="startLocation"
+            value={formData.startLocation}
+            onChange={handleInput}
+            required
+            fullWidth
+            margin="normal"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  {loadingLocation ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <>
+                      <Tooltip title="Use my location">
+                        <IconButton onClick={useLocation} edge="end" size="small">
                           <MyLocationIcon />
                         </IconButton>
                       </Tooltip>
-                    )}
-                  </InputAdornment>
-                ),
-              }}
-            />
+                      <Tooltip title="Pick on map">
+                        <IconButton onClick={() => openPickerFor("startLocation")} edge="end" size="small">
+                          <MapIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  )}
+                </InputAdornment>
+              ),
+            }}
+            error={Boolean(errors.startLocation)}
+            helperText={errors.startLocation}
+          />
+        </Autocomplete>
 
-            <TextField
-              name="endLocation"
-              label="End Location"
-              value={formData.endLocation}
-              onChange={handleInput}
-              margin="normal"
-              fullWidth
-              error={!!errors.endLocation}
-              helperText={errors.endLocation}
-            />
-          </>
-        )}
+        <Autocomplete
+          apiKey={googleMapsApiKey}
+          onLoad={(ref) => (endRef.current = ref)}
+          onPlaceChanged={() => onPlaceChanged("endLocation")}
+        >
+          <TextField
+            label="End Location"
+            name="endLocation"
+            value={formData.endLocation}
+            onChange={handleInput}
+            required
+            fullWidth
+            margin="normal"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Tooltip title="Pick on map">
+                    <IconButton onClick={() => openPickerFor("endLocation")} edge="end" size="small">
+                      <MapIcon />
+                    </IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              ),
+            }}
+            error={Boolean(errors.endLocation)}
+            helperText={errors.endLocation}
+          />
+        </Autocomplete>
 
         <TextField
-          name="date"
           label="Date"
+          name="date"
           type="date"
           value={formData.date}
           onChange={handleInput}
-          margin="normal"
-          fullWidth
-          error={!!errors.date}
-          helperText={errors.date}
           InputLabelProps={{ shrink: true }}
+          required
+          fullWidth
+          margin="normal"
+          error={Boolean(errors.date)}
+          helperText={errors.date}
         />
 
         <TextField
-          name="time"
           label="Time"
+          name="time"
           type="time"
           value={formData.time}
           onChange={handleInput}
-          margin="normal"
-          fullWidth
-          error={!!errors.time}
-          helperText={errors.time}
           InputLabelProps={{ shrink: true }}
+          required
+          fullWidth
+          margin="normal"
+          error={Boolean(errors.time)}
+          helperText={errors.time}
         />
 
-        <FormControl margin="normal" fullWidth error={!!errors.vehicleType}>
+        <FormControl fullWidth margin="normal" error={Boolean(errors.vehicleType)}>
           <InputLabel id="vehicle-type-label">Vehicle Type</InputLabel>
           <Select
             labelId="vehicle-type-label"
+            label="Vehicle Type"
             name="vehicleType"
             value={formData.vehicleType}
-            label="Vehicle Type"
             onChange={handleInput}
+            required
           >
             <MenuItem value="">
               <em>None</em>
@@ -382,65 +343,68 @@ export default function CreateTrip({ user, onNavigate, mapsLoaded, mapsError }) 
         </FormControl>
 
         <TextField
-          name="seatsAvailable"
           label="Seats Available"
+          name="seatsAvailable"
           type="number"
           value={formData.seatsAvailable}
           onChange={handleInput}
-          margin="normal"
+          required
           fullWidth
-          error={!!errors.seatsAvailable}
+          margin="normal"
+          error={Boolean(errors.seatsAvailable)}
           helperText={errors.seatsAvailable}
           inputProps={{ min: 1 }}
         />
 
         <TextField
-          name="vehicleNumber"
           label="Vehicle Number"
+          name="vehicleNumber"
           value={formData.vehicleNumber}
           onChange={handleInput}
-          margin="normal"
+          required
           fullWidth
-          error={!!errors.vehicleNumber}
-          helperText={errors.vehicleNumber}
+          margin="normal"
           inputProps={{ style: { textTransform: "uppercase" } }}
+          error={Boolean(errors.vehicleNumber)}
+          helperText={errors.vehicleNumber}
         />
 
         <TextField
-          name="licenseNumber"
           label="License Number"
+          name="licenseNumber"
           value={formData.licenseNumber}
           onChange={handleInput}
-          margin="normal"
+          required
           fullWidth
-          error={!!errors.licenseNumber}
-          helperText={errors.licenseNumber}
+          margin="normal"
           inputProps={{ style: { textTransform: "uppercase" } }}
+          error={Boolean(errors.licenseNumber)}
+          helperText={errors.licenseNumber}
         />
 
         <TextField
-          name="description"
           label="Description"
+          name="description"
           value={formData.description}
           onChange={handleInput}
-          margin="normal"
           fullWidth
+          margin="normal"
           multiline
           rows={3}
         />
 
-        <Box mt={2}>
-          <Button type="submit" variant="contained" color="primary" fullWidth disabled={submitting}>
-            {submitting ? "Creating..." : "Create Trip"}
-          </Button>
-        </Box>
-      </form>
+        <Button type="submit" variant="contained" fullWidth sx={{ mt: 3 }} disabled={submitting}>
+          {submitting ? "Creating..." : "Create Trip"}
+        </Button>
+      </Box>
 
       {openPicker && (
         <ModalPicker
+          apiKey={googleMapsApiKey}
           open={openPicker}
           onClose={() => setOpenPicker(false)}
           onSelect={onPickerSelect}
+          initialLocation={null}
         />
       )}
     </Container>

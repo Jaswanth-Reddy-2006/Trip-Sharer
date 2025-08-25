@@ -11,7 +11,7 @@ export default function Auth() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (auth.currentUser) return <Navigate to="/" replace />;
+  if (auth.currentUser) return null;
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -41,17 +41,13 @@ export default function Auth() {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ py: 6 }}>
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 3 }}>
-        Login
-      </Typography>
-
-      <Box component="form" onSubmit={handleLogin}>
+    <Container maxWidth="xs">
+      <Typography variant="h5" gutterBottom>Login</Typography>
+      <form onSubmit={handleLogin} autoComplete="off">
         <TextField
           label="Email"
-          type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={e => setEmail(e.target.value)}
           required
           autoComplete="email"
           fullWidth
@@ -60,45 +56,24 @@ export default function Auth() {
         />
         <TextField
           label="Password"
-          type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          onChange={e => setPassword(e.target.value)}
           required
           autoComplete="current-password"
           fullWidth
           margin="normal"
           disabled={loading}
         />
-
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-        <Button
-          type="submit"
-          variant="contained"
-          color="primary"
-          fullWidth
-          sx={{ mt: 3 }}
-          disabled={loading}
-        >
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        <Button type="submit" variant="contained" fullWidth disabled={loading}>
           {loading ? 'Logging in...' : 'Log In'}
         </Button>
-
-        <Divider sx={{ my: 3 }}>OR</Divider>
-
-        <Button
-          variant="outlined"
-          color="primary"
-          fullWidth
-          onClick={handleGoogleLogin}
-          disabled={loading}
-        >
+        <Divider sx={{ my: 2 }}>OR</Divider>
+        <Button onClick={handleGoogleLogin} variant="outlined" fullWidth disabled={loading}>
           Login with Google
         </Button>
-      </Box>
+      </form>
     </Container>
   );
 }
