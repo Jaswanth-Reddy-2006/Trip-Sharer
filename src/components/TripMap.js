@@ -18,7 +18,6 @@ export default function TripMap({ trip, apiKey, darkMode = false }) {
   const [mapsError, setMapsError] = useState("");
   const [infoWindowOpen, setInfoWindowOpen] = useState(null);
   const [currentPos, setCurrentPos] = useState(null);
-
   const mapRef = useRef();
 
   const onLoad = useCallback((mapInstance) => {
@@ -90,79 +89,70 @@ export default function TripMap({ trip, apiKey, darkMode = false }) {
 
   if (!apiKey) {
     return (
-      <Alert severity="warning" sx={{ mt: 2 }}>
+      <Alert severity="warning">
         Google Maps is not configured. Map preview is disabled.
       </Alert>
     );
   }
 
   return (
-    <LoadScript
-      googleMapsApiKey={apiKey}
-      onError={() =>
-        setMapsError("Failed to load Google Maps. Check API key and referrer settings.")
-      }
-    >
-      {error && <Alert severity="error">{error}</Alert>}
-      {mapsError && <Alert severity="error">{mapsError}</Alert>}
-
-      <GoogleMap
-        mapContainerStyle={containerStyle}
-        center={trip.startLocation}
-        zoom={10}
-        onLoad={onLoad}
-        options={{
-          styles: darkMode
-            ? [
-                { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-                { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-                { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-                // More dark theme styles can be added here
-              ]
-            : undefined,
-        }}
+    <Box>
+      <LoadScript
+        googleMapsApiKey={apiKey}
+        onError={() =>
+          setMapsError("Failed to load Google Maps. Check API key and referrer settings.")
+        }
       >
-        {directions && <DirectionsRenderer directions={directions} />}
-        {trip?.startLocation && (
-          <Marker
-            position={typeof trip.startLocation === "string" ? null : trip.startLocation}
-            onClick={() => setInfoWindowOpen("start")}
-          />
-        )}
-        {trip?.endLocation && (
-          <Marker
-            position={typeof trip.endLocation === "string" ? null : trip.endLocation}
-            onClick={() => setInfoWindowOpen("end")}
-          />
-        )}
-        {infoWindowOpen && (
-          <InfoWindow
-            position={
-              infoWindowOpen === "start"
-                ? typeof trip.startLocation === "string"
-                  ? null
-                  : trip.startLocation
-                : typeof trip.endLocation === "string"
-                ? null
-                : trip.endLocation
-            }
-            onCloseClick={() => setInfoWindowOpen(null)}
-          >
-            <Box>
-              <Typography variant="body2" fontWeight="bold">
-                {infoWindowOpen === "start" ? trip.startLocation : trip.endLocation}
-              </Typography>
-            </Box>
-          </InfoWindow>
-        )}
-        {currentPos && <Marker position={currentPos} label="You" />}
-      </GoogleMap>
+        <GoogleMap
+          mapContainerStyle={containerStyle}
+          center={currentPos || { lat: 17.3850, lng: 78.4867 }}
+          zoom={12}
+          onLoad={onLoad}
+          options={{
+            styles: darkMode ? [
+              { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+              { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+              { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+            ] : undefined
+          }}
+        >
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {mapsError && <Alert severity="error" sx={{ mb: 2 }}>{mapsError}</Alert>}
 
-      <Box mt={2}>
-        <Typography>
-          Distance: {distance ?? "N/A"} | Estimated Duration: {duration ?? "N/A"}
-        </Typography>
-      </Box>
-    </LoadScript>
+          {directions && <DirectionsRenderer directions={directions} />}
+
+          {trip?.startLocation && (
+            <Marker
+              position={trip.startLocation}
+              onClick={() => setInfoWindowOpen("start")}
+            />
+          )}
+
+          {trip?.endLocation && (
+            <Marker
+              position={trip.endLocation}
+              onClick={() => setInfoWindowOpen("end")}
+            />
+          )}
+
+          {infoWindowOpen && (
+            <InfoWindow
+              position={infoWindowOpen === "start" ? trip.startLocation : trip.endLocation}
+              onCloseClick={() => setInfoWindowOpen(null)}
+            >
+              <div>
+                {infoWindowOpen === "start" ? trip.startLocation : trip.endLocation}
+              </div>
+            </InfoWindow>
+          )}
+
+          {currentPos && <Marker position={currentPos} icon={{ url: '/current-location.png' }} />}
+        </GoogleMap>
+      </LoadScript>
+
+      <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
+        Distance: {distance ?? "N/A"} | Estimated Duration: {duration ?? "N/A"}
+      </Typography>
+    </Box>
   );
 }

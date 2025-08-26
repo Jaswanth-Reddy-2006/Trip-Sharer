@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import { Container, TextField, Button, Typography, Box, Divider, Alert } from '@mui/material';
@@ -17,6 +17,7 @@ export default function Auth() {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/');
@@ -30,6 +31,7 @@ export default function Auth() {
   const handleGoogleLogin = async () => {
     setError('');
     setLoading(true);
+
     try {
       await signInWithPopup(auth, googleProvider);
       navigate('/');
@@ -41,39 +43,62 @@ export default function Auth() {
   };
 
   return (
-    <Container maxWidth="xs">
-      <Typography variant="h5" gutterBottom>Login</Typography>
-      <form onSubmit={handleLogin} autoComplete="off">
+    <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Typography variant="h4" gutterBottom align="center">
+        Login
+      </Typography>
+
+      <Box component="form" onSubmit={handleLogin} noValidate>
         <TextField
+          type="email"
           label="Email"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           required
           autoComplete="email"
           fullWidth
           margin="normal"
           disabled={loading}
         />
+
         <TextField
+          type="password"
           label="Password"
           value={password}
-          type="password"
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
           autoComplete="current-password"
           fullWidth
           margin="normal"
           disabled={loading}
         />
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        <Button type="submit" variant="contained" fullWidth disabled={loading}>
+
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          fullWidth
+          disabled={loading}
+          sx={{ mt: 3, py: 1.5 }}
+        >
           {loading ? 'Logging in...' : 'Log In'}
         </Button>
-        <Divider sx={{ my: 2 }}>OR</Divider>
-        <Button onClick={handleGoogleLogin} variant="outlined" fullWidth disabled={loading}>
+
+        <Divider sx={{ my: 3 }}>OR</Divider>
+
+        <Button
+          variant="outlined"
+          size="large"
+          fullWidth
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          sx={{ py: 1.5 }}
+        >
           Login with Google
         </Button>
-      </form>
+      </Box>
     </Container>
   );
 }

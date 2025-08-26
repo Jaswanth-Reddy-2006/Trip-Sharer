@@ -3,6 +3,7 @@ import { Modal, Box, Button, Typography, CircularProgress, Alert } from "@mui/ma
 import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 
 const containerStyle = { width: "100%", height: "400px" };
+
 const modalStyle = {
   position: "absolute",
   top: "50%",
@@ -33,6 +34,7 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
 
   useEffect(() => {
     if (!selectedPos || !apiKey) return;
+
     setLoadingAddress(true);
     fetch(
       `https://maps.googleapis.com/maps/api/geocode/json?latlng=${selectedPos.lat},${selectedPos.lng}&key=${apiKey}`
@@ -63,7 +65,9 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
   return (
     <Modal open={open} onClose={onClose}>
       <Box sx={modalStyle}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Select Location on Map</Typography>
+        <Typography variant="h6" component="h2" gutterBottom>
+          Select Location on Map
+        </Typography>
 
         {!apiKey ? (
           <Alert severity="warning">
@@ -72,34 +76,47 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
         ) : (
           <>
             {mapsError && <Alert severity="error" sx={{ mb: 2 }}>{mapsError}</Alert>}
+
             <LoadScript
               googleMapsApiKey={apiKey}
-              onError={() => setMapsError("Failed to load Google Maps. Check API key and referrer settings.")}
+              onError={() =>
+                setMapsError("Failed to load Google Maps. Check API key and referrer settings.")
+              }
             >
               <GoogleMap
                 mapContainerStyle={containerStyle}
-                center={selectedPos || center}
-                zoom={selectedPos ? 14 : 4}
+                center={center}
+                zoom={10}
                 onClick={onMapClick}
-                options={{ streetViewControl: false, mapTypeControl: false }}
               >
                 {selectedPos && <Marker position={selectedPos} />}
               </GoogleMap>
             </LoadScript>
 
-            <Box sx={{ mt: 2 }}>
-              {loadingAddress ? (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <CircularProgress size={18} /> <Typography>Fetching address...</Typography>
-                </Box>
-              ) : (
-                <Typography>{address || "Click on map to select"}</Typography>
-              )}
-            </Box>
+            {selectedPos && (
+              <Box sx={{ mt: 2 }}>
+                {loadingAddress ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={16} />
+                    <Typography variant="body2">Fetching address...</Typography>
+                  </Box>
+                ) : (
+                  <Typography variant="body2">
+                    {address || "Click on map to select"}
+                  </Typography>
+                )}
+              </Box>
+            )}
 
-            <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", mt: 2 }}>
-              <Button onClick={onClose} color="inherit">Cancel</Button>
-              <Button onClick={handleSave} variant="contained" disabled={!selectedPos || loadingAddress}>
+            <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Button onClick={onClose} variant="outlined">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                variant="contained"
+                disabled={!selectedPos || loadingAddress}
+              >
                 Save
               </Button>
             </Box>
