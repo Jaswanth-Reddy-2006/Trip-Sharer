@@ -16,17 +16,15 @@ import {
   CardContent,
   Chip,
   Grid,
-  Paper,
   Stack,
-  Avatar,
   Divider,
-  Fade,
-  Skeleton,
   IconButton,
   Tooltip,
   Badge,
   alpha,
-  useTheme
+  useTheme,
+  Paper,
+  Autocomplete
 } from "@mui/material";
 import {
   DirectionsCar,
@@ -36,17 +34,16 @@ import {
   LocationOn,
   Search as SearchIcon,
   FilterList,
-  Sort,
   Clear,
   Refresh,
   Chat,
-  Phone,
   Star,
-  Verified,
   AccessTime,
   CalendarToday,
-  Route,
-  AccountCircle
+  Route as RouteIcon,
+  AccountCircle,
+  Info,
+  CurrencyRupee
 } from "@mui/icons-material";
 import {
   collection,
@@ -55,18 +52,27 @@ import {
   doc,
   getDoc,
   where,
-  orderBy,
-  limit
+  orderBy
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 const VEHICLE_TYPES = ["Car", "Bike", "Scooter"];
+
 const SORT_OPTIONS = [
-  { value: "soonest", label: "Date: Soonest", icon: <Schedule /> },
+  { value: "soonest", label: "Date: Soonest", icon: <CalendarToday /> },
   { value: "timeAsc", label: "Time: Earliest", icon: <AccessTime /> },
   { value: "seatsDesc", label: "Seats: Most Available", icon: <Person /> },
-  { value: "seatsAsc", label: "Seats: Least Available", icon: <Person /> },
-  { value: "newest", label: "Recently Added", icon: <Schedule /> }
+  { value: "newest", label: "Recently Added", icon: <Star /> }
+];
+
+// Hyderabad locations for autocomplete
+const hyderabadLocations = [
+  "Nagole", "Uppal", "Secunderabad", "Hitech City", "Gachibowli", 
+  "Madhapur", "Kondapur", "Miyapur", "Kukatpally", "JNTU",
+  "Ameerpet", "Begumpet", "Jubilee Hills", "Banjara Hills", "Mehdipatnam",
+  "Tolichowki", "Golconda", "Charminar", "Abids", "Nampally",
+  "Koti", "Malakpet", "Dilsukhnagar", "LB Nagar", "Vanasthalipuram",
+  "Kompally", "Bachupally", "Nizampet", "Madinaguda", "Lingampally"
 ];
 
 export default function Trips({ user, onNavigate }) {
@@ -89,7 +95,6 @@ export default function Trips({ user, onNavigate }) {
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Check authentication and profile on mount
   useEffect(() => {
     if (!user) {
       onNavigate("/auth");
@@ -100,30 +105,34 @@ export default function Trips({ user, onNavigate }) {
       try {
         const userRef = doc(db, "users", user.uid);
         const docSnap = await getDoc(userRef);
+
         if (!docSnap.exists() || !docSnap.data().profileComplete) {
           onNavigate("/complete-profile");
           return;
         }
+
         setUserProfile(docSnap.data());
       } catch (error) {
         console.error("Error checking profile:", error);
         setError("Failed to load user profile");
       }
     }
+
     checkProfile();
   }, [user, onNavigate]);
 
-  // Load trips
   useEffect(() => {
     async function loadTrips() {
       if (!user || !userProfile) return;
+
       setLoading(true);
       setError("");
+
       try {
-        // Get all active trips
         const tripsRef = collection(db, "trips");
         const q = query(tripsRef, orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
+
         const allTrips = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data()
@@ -137,7 +146,7 @@ export default function Trips({ user, onNavigate }) {
           ...doc.data()
         }));
 
-        // Process trips to show only available ones
+        // Process trips
         const availableTrips = allTrips.filter(trip => {
           // Only show future trips
           let tripDate;
@@ -148,27 +157,25 @@ export default function Trips({ user, onNavigate }) {
           } else {
             return false;
           }
+
           if (tripDate <= new Date()) return false;
 
           // Don't show user's own trips
           if (trip.uploaderId === user.uid) return false;
 
-          // For cars, check if seats are available (considering cancellations)
+          // For cars, check seat availability
           if (trip.vehicleType === "Car" && trip.seatsAvailable) {
             const tripBookings = allBookings.filter(booking =>
-              booking.tripId === trip.id &&
-              booking.status !== 'cancelled' // Only count non-cancelled bookings
+              booking.tripId === trip.id && booking.status !== 'cancelled'
             );
             const bookedSeats = tripBookings.reduce((sum, booking) =>
               sum + (booking.bookingSeats || 0), 0
             );
             const availableSeats = trip.seatsAvailable - bookedSeats;
-            // Update trip with current available seats
             trip.currentAvailableSeats = Math.max(0, availableSeats);
             return availableSeats > 0;
           }
 
-          // Show all bike/scooter trips (no seat limitation)
           return true;
         });
 
@@ -180,6 +187,7 @@ export default function Trips({ user, onNavigate }) {
         setLoading(false);
       }
     }
+
     loadTrips();
   }, [user, userProfile]);
 
@@ -188,13 +196,14 @@ export default function Trips({ user, onNavigate }) {
     let data = [...trips];
 
     // Search filters
-    if (searchPickup.length > 1) {
+    if (searchPickup) {
       const lower = searchPickup.toLowerCase();
       data = data.filter((trip) =>
         trip.startLocation?.toLowerCase().includes(lower)
       );
     }
-    if (searchDrop.length > 1) {
+
+    if (searchDrop) {
       const lower = searchDrop.toLowerCase();
       data = data.filter((trip) =>
         trip.endLocation?.toLowerCase().includes(lower)
@@ -212,7 +221,7 @@ export default function Trips({ user, onNavigate }) {
       });
     }
 
-    // Time filter (only works with date filter)
+    // Time filter
     if (filterTime && filterDate) {
       data = data.filter((trip) => {
         if (!trip.date) return false;
@@ -241,8 +250,6 @@ export default function Trips({ user, onNavigate }) {
           return aMinutes - bMinutes;
         case "seatsDesc":
           return (b.currentAvailableSeats || 0) - (a.currentAvailableSeats || 0);
-        case "seatsAsc":
-          return (a.currentAvailableSeats || 0) - (b.currentAvailableSeats || 0);
         case "newest":
           const aCreated = a.createdAt?.seconds || 0;
           const bCreated = b.createdAt?.seconds || 0;
@@ -253,15 +260,7 @@ export default function Trips({ user, onNavigate }) {
     });
 
     setFilteredTrips(data);
-  }, [
-    trips,
-    searchPickup,
-    searchDrop,
-    filterDate,
-    filterTime,
-    filterVehicle,
-    sortBy,
-  ]);
+  }, [trips, searchPickup, searchDrop, filterDate, filterTime, filterVehicle, sortBy]);
 
   const getMinutes = (date) => {
     if (!date) return Number.MAX_SAFE_INTEGER;
@@ -289,23 +288,23 @@ export default function Trips({ user, onNavigate }) {
     });
   };
 
-  const getVehicleIcon = (vehicleType, color = "action") => {
+  const getVehicleIcon = (vehicleType) => {
     switch (vehicleType) {
       case "Car":
-        return <DirectionsCar color={color} />;
+        return <DirectionsCar />;
       case "Bike":
       case "Scooter":
-        return <TwoWheeler color={color} />;
+        return <TwoWheeler />;
       default:
-        return <DirectionsCar color={color} />;
+        return <DirectionsCar />;
     }
   };
 
   const getVehicleColor = (vehicleType) => {
     switch (vehicleType) {
-      case "Car": return "#1976d2";
-      case "Bike": return "#f57c00";
-      case "Scooter": return "#388e3c";
+      case "Car": return "#667eea";
+      case "Bike": return "#ed8936";
+      case "Scooter": return "#48bb78";
       default: return "#666";
     }
   };
@@ -319,9 +318,8 @@ export default function Trips({ user, onNavigate }) {
     setSortBy("soonest");
   };
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setRefreshing(true);
-    // Re-trigger the loadTrips effect
     setUserProfile(prev => ({ ...prev }));
     setTimeout(() => setRefreshing(false), 1000);
   };
@@ -330,7 +328,7 @@ export default function Trips({ user, onNavigate }) {
 
   if (!user || !userProfile) {
     return (
-      <Container>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
         <CircularProgress />
       </Container>
     );
@@ -339,315 +337,465 @@ export default function Trips({ user, onNavigate }) {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Box
-        sx={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          borderRadius: 3,
-          color: 'white',
-          p: 4,
-          mb: 4,
-          textAlign: 'center'
-        }}
-      >
-        <Typography variant="h3" gutterBottom sx={{ fontWeight: 700 }}>
+      <Box textAlign="center" sx={{ mb: 6 }}>
+        <Typography
+          variant="h2"
+          sx={{
+            fontWeight: 700,
+            mb: 2,
+            background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
           Available Trips
         </Typography>
-        <Typography variant="h6" sx={{ opacity: 0.9, mb: 2 }}>
+        <Typography variant="h6" color="text.secondary">
           Find your perfect ride in Hyderabad
         </Typography>
-        <Stack direction="row" spacing={2} justifyContent="center" flexWrap="wrap">
-          <Chip
-            label={`${filteredTrips.length} trips available`}
-            sx={{ bgcolor: alpha('#ffffff', 0.2), color: 'white' }} // Fixed: Changed 'white' to '#ffffff'
-          />
-          <Chip
-            label="All verified drivers"
-            sx={{ bgcolor: alpha('#ffffff', 0.2), color: 'white' }} // Fixed: Changed 'white' to '#ffffff'
-          />
-        </Stack>
       </Box>
 
       {/* Search & Filter Bar */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2, boxShadow: 2 }}>
-        <Grid container spacing={2} alignItems="center">
-          {/* Search Fields */}
-          <Grid item xs={12} md={4}>
-            <TextField
-              placeholder="Search pickup location"
-              value={searchPickup}
-              onChange={(e) => setSearchPickup(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LocationOn color="action" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              fullWidth
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              placeholder="Search drop location"
-              value={searchDrop}
-              onChange={(e) => setSearchDrop(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LocationOn color="action" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              fullWidth
-            />
-          </Grid>
-
-          {/* Quick Actions */}
-          <Grid item xs={12} md={4}>
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <IconButton
-                onClick={() => setShowFilters(!showFilters)}
-                sx={{
-                  bgcolor: showFilters ? 'primary.main' : alpha(theme.palette.primary.main, 0.1),
-                  color: showFilters ? 'white' : 'primary.main'
-                }}
-              >
-                <FilterList />
-                {hasActiveFilters && (
-                  <Badge color="error" variant="dot" />
+      <Paper sx={{ p: 3, mb: 4, borderRadius: 4 }}>
+        <Stack spacing={3}>
+          {/* Main Search */}
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={5}>
+              <Autocomplete
+                freeSolo
+                options={hyderabadLocations}
+                value={searchPickup}
+                onInputChange={(event, newValue) => setSearchPickup(newValue || '')}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="From (Pickup location)"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LocationOn color="primary" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
                 )}
-              </IconButton>
-              <IconButton onClick={handleRefresh} disabled={refreshing}>
-                <Refresh />
-              </IconButton>
-              {hasActiveFilters && (
-                <IconButton onClick={clearFilters} color="error">
-                  <Clear />
-                </IconButton>
-              )}
-            </Stack>
-          </Grid>
-        </Grid>
+              />
+            </Grid>
 
-        {/* Extended Filters */}
-        {showFilters && (
-          <Box sx={{ mt: 3, pt: 3, borderTop: 1, borderColor: 'divider' }}>
+            <Grid item xs={12} md={5}>
+              <Autocomplete
+                freeSolo
+                options={hyderabadLocations}
+                value={searchDrop}
+                onInputChange={(event, newValue) => setSearchDrop(newValue || '')}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="To (Drop location)"
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LocationOn color="secondary" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <Stack direction="row" spacing={1} sx={{ height: '100%' }}>
+                <Tooltip title="More filters">
+                  <IconButton
+                    onClick={() => setShowFilters(!showFilters)}
+                    sx={{
+                      bgcolor: showFilters ? 'primary.main' : alpha(theme.palette.primary.main, 0.1),
+                      color: showFilters ? 'white' : 'primary.main',
+                      flex: 1,
+                      borderRadius: 2
+                    }}
+                  >
+                    <FilterList />
+                    {hasActiveFilters && (
+                      <Badge
+                        color="error"
+                        variant="dot"
+                        sx={{ position: 'absolute', top: 8, right: 8 }}
+                      />
+                    )}
+                  </IconButton>
+                </Tooltip>
+
+                {hasActiveFilters && (
+                  <Tooltip title="Clear filters">
+                    <IconButton onClick={clearFilters} sx={{ borderRadius: 2 }}>
+                      <Clear />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                <Tooltip title="Refresh">
+                  <IconButton onClick={handleRefresh} disabled={refreshing} sx={{ borderRadius: 2 }}>
+                    <Refresh />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Grid>
+          </Grid>
+
+          {/* Extended Filters */}
+          {showFilters && (
             <Grid container spacing={2}>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
-                  label="Date"
                   type="date"
+                  label="Travel Date"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                   inputProps={{ min: new Date().toISOString().split('T')[0] }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                   fullWidth
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
-                  label="Time"
                   type="time"
+                  label="Departure Time"
                   value={filterTime}
                   onChange={(e) => setFilterTime(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                   disabled={!filterDate}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                   fullWidth
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+
+              <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth>
                   <InputLabel>Vehicle Type</InputLabel>
                   <Select
                     value={filterVehicle}
-                    onChange={(e) => setFilterVehicle(e.target.value)}
                     label="Vehicle Type"
-                    sx={{ borderRadius: 2 }}
+                    onChange={(e) => setFilterVehicle(e.target.value)}
                   >
-                    <MenuItem value="">
-                      <em>All Vehicles</em>
-                    </MenuItem>
+                    <MenuItem value="">All Vehicles</MenuItem>
                     {VEHICLE_TYPES.map((v) => (
                       <MenuItem key={v} value={v}>
-                        {getVehicleIcon(v)}
-                        <span style={{ marginLeft: 8 }}>{v}</span>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          {getVehicleIcon(v)}
+                          <span>{v}</span>
+                        </Stack>
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={3}>
+
+              <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth>
                   <InputLabel>Sort By</InputLabel>
                   <Select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
                     label="Sort By"
-                    sx={{ borderRadius: 2 }}
+                    onChange={(e) => setSortBy(e.target.value)}
                   >
                     {SORT_OPTIONS.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
-                        {option.icon}
-                        <span style={{ marginLeft: 8 }}>{option.label}</span>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          {option.icon}
+                          <span>{option.label}</span>
+                        </Stack>
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
             </Grid>
-          </Box>
-        )}
+          )}
+        </Stack>
       </Paper>
 
       {/* Results */}
       {loading ? (
-        <Grid container spacing={3}>
+        <Stack spacing={2}>
           {[1, 2, 3].map((n) => (
-            <Grid item xs={12} key={n}>
-              <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2 }} />
-            </Grid>
+            <Paper key={n} sx={{ p: 4, borderRadius: 4 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={8}>
+                  <Box sx={{ height: 60, bgcolor: 'grey.100', borderRadius: 2, mb: 2 }} />
+                  <Box sx={{ height: 20, bgcolor: 'grey.100', borderRadius: 1, mb: 1 }} />
+                  <Box sx={{ height: 20, width: '60%', bgcolor: 'grey.100', borderRadius: 1 }} />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ height: 40, bgcolor: 'grey.100', borderRadius: 2 }} />
+                </Grid>
+              </Grid>
+            </Paper>
           ))}
-        </Grid>
+        </Stack>
       ) : error ? (
-        <Alert severity="error" sx={{ borderRadius: 2 }}>
+        <Alert severity="error" sx={{ borderRadius: 3 }}>
           {error}
         </Alert>
       ) : filteredTrips.length === 0 ? (
-        <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-          <Typography variant="h5" gutterBottom>
+        <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 4 }}>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
             No trips found
           </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
+          <Typography color="text.secondary" sx={{ mb: 4 }}>
             {hasActiveFilters
               ? "Try adjusting your filters or search criteria"
               : "Be the first to create a trip!"
             }
           </Typography>
-          {hasActiveFilters && (
-            <Button
-              variant="outlined"
-              onClick={clearFilters}
-              sx={{ mr: 2, borderRadius: 2 }}
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+            {hasActiveFilters && (
+              <Button variant="outlined" onClick={clearFilters}>
+                Clear Filters
+              </Button>
+            )}
+            <Button 
+              variant="contained"
+              onClick={() => onNavigate('/create-trip')}
+              sx={{
+                background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                }
+              }}
             >
-              Clear Filters
+              Create Trip
             </Button>
-          )}
-          <Button
-            variant="contained"
-            onClick={() => onNavigate('/create-trip')}
-            sx={{ borderRadius: 2 }}
-          >
-            Create Trip
-          </Button>
+          </Stack>
         </Paper>
       ) : (
-        <Grid container spacing={3}>
-          {filteredTrips.map((trip, index) => (
-            <Grid item xs={12} key={trip.id}>
-              <Fade in timeout={300 + index * 100}>
-                <Card sx={{ p: 3, borderRadius: 3, boxShadow: 2, '&:hover': { boxShadow: 4 } }}>
-                  <Grid container spacing={3} alignItems="center">
-                    {/* Header */}
-                    <Grid item xs={12} md={8}>
-                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-                        {getVehicleIcon(trip.vehicleType, 'inherit')}
-                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                          {trip.vehicleType}
-                        </Typography>
+        <Stack spacing={3}>
+          <Typography variant="h6" color="text.secondary" sx={{ textAlign: 'center' }}>
+            Found {filteredTrips.length} available trip{filteredTrips.length !== 1 ? 's' : ''}
+          </Typography>
+
+          {filteredTrips.map((trip) => (
+            <Card
+              key={trip.id}
+              sx={{
+                borderRadius: 4,
+                overflow: 'hidden',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.12)'
+                },
+                transition: 'all 0.3s ease'
+              }}
+            >
+              <CardContent sx={{ p: 4 }}>
+                <Grid container spacing={3}>
+                  {/* Trip Details */}
+                  <Grid item xs={12} md={8}>
+                    <Stack spacing={3}>
+                      {/* Header with Vehicle Type */}
+                      <Stack direction="row" alignItems="center" spacing={2}>
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            bgcolor: alpha(getVehicleColor(trip.vehicleType), 0.1),
+                            color: getVehicleColor(trip.vehicleType)
+                          }}
+                        >
+                          {getVehicleIcon(trip.vehicleType)}
+                        </Box>
+                        <Box>
+                          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                            {trip.vehicleType}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {trip.vehicleNumber}
+                          </Typography>
+                        </Box>
                         {trip.vehicleType === "Car" && trip.currentAvailableSeats && (
                           <Chip
+                            icon={<Person />}
                             label={`${trip.currentAvailableSeats} seats`}
+                            size="small"
+                            color="primary"
                             variant="outlined"
-                            sx={{ borderColor: getVehicleColor(trip.vehicleType) }}
                           />
                         )}
-                        <Chip
-                          label={trip.vehicleNumber}
-                          sx={{ bgcolor: alpha('primary.main', 0.1) }}
-                        />
                       </Stack>
 
                       {/* Route */}
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                      <Box>
+                        <Typography variant="overline" color="primary.main" sx={{ fontWeight: 600 }}>
                           ROUTE
                         </Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                          {trip.startLocation} → {trip.endLocation}
-                        </Typography>
+                        <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 1 }}>
+                          <LocationOn color="primary" />
+                          <Typography sx={{ fontWeight: 500 }}>
+                            {trip.startLocation}
+                          </Typography>
+                          <RouteIcon color="action" />
+                          <LocationOn color="secondary" />
+                          <Typography sx={{ fontWeight: 500 }}>
+                            {trip.endLocation}
+                          </Typography>
+                        </Stack>
                       </Box>
 
                       {/* Time & Details */}
-                      <Grid container spacing={2}>
-                        <Grid item>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                      <Grid container spacing={4}>
+                        <Grid item xs={6} sm={4}>
+                          <Typography variant="overline" color="text.secondary">
                             Departure
                           </Typography>
-                          <Typography variant="body2">
-                            {formatTime(trip.date)}
-                          </Typography>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <CalendarToday sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+                            <Typography sx={{ fontWeight: 500 }}>
+                              {formatDate(trip.date)}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <AccessTime sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+                            <Typography sx={{ fontWeight: 500 }}>
+                              {formatTime(trip.date)}
+                            </Typography>
+                          </Stack>
                         </Grid>
-                        <Grid item>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+
+                        <Grid item xs={6} sm={4}>
+                          <Typography variant="overline" color="text.secondary">
                             Driver
                           </Typography>
-                          <Typography variant="body2">
-                            {trip.uploaderName}
-                          </Typography>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <AccountCircle sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+                            <Typography sx={{ fontWeight: 500 }}>
+                              {trip.uploaderName}
+                            </Typography>
+                          </Stack>
                           {trip.uploaderUsername && (
-                            <Typography variant="caption" color="text.secondary">
-                              Username: @{trip.uploaderUsername}
+                            <Typography variant="body2" color="text.secondary">
+                              @{trip.uploaderUsername}
                             </Typography>
                           )}
                         </Grid>
+
+                        {trip.estimatedDistance && (
+                          <Grid item xs={12} sm={4}>
+                            <Typography variant="overline" color="text.secondary">
+                              Estimated Cost
+                            </Typography>
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <CurrencyRupee sx={{ fontSize: '1rem', color: 'success.main' }} />
+                              <Typography sx={{ fontWeight: 600, color: 'success.main' }}>
+                                ₹{(trip.estimatedDistance * 2.5).toFixed(2)}
+                              </Typography>
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              {trip.estimatedDistance.toFixed(1)} km @ ₹2.5/km
+                            </Typography>
+                          </Grid>
+                        )}
                       </Grid>
 
                       {/* Description */}
                       {trip.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
-                          "{trip.description}"
-                        </Typography>
-                      )}
-                    </Grid>
-
-                    {/* Actions */}
-                    <Grid item xs={12} md={4}>
-                      <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                        <Button
-                          variant="contained"
-                          size="large"
-                          onClick={() => {
-                            if (!user) {
-                              alert("Please log in to book.");
-                              return;
-                            }
-                            onNavigate(`/book-trip/${trip.id}`);
-                          }}
+                        <Box
                           sx={{
+                            p: 2,
+                            bgcolor: 'grey.50',
                             borderRadius: 2,
-                            fontWeight: 600,
-                            px: 4,
-                            background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                            '&:hover': {
-                              background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
-                              transform: 'translateY(-1px)'
-                            }
+                            borderLeft: '4px solid',
+                            borderLeftColor: 'primary.main'
                           }}
                         >
-                          Book This Trip
-                        </Button>
-                      </Box>
-                    </Grid>
+                          <Typography variant="body2" color="text.secondary">
+                            "{trip.description}"
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
                   </Grid>
-                </Card>
-              </Fade>
-            </Grid>
+
+                  {/* Actions */}
+                  <Grid item xs={12} md={4}>
+                    <Stack spacing={2} sx={{ height: '100%', justifyContent: 'center' }}>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        onClick={() => {
+                          if (!user) {
+                            alert("Please log in to book.");
+                            return;
+                          }
+                          onNavigate(`/book-trip/${trip.id}`);
+                        }}
+                        sx={{
+                          py: 2,
+                          fontSize: '1rem',
+                          fontWeight: 600,
+                          borderRadius: 3,
+                          background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                          '&:hover': {
+                            background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                            transform: 'translateY(-1px)'
+                          },
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        Book This Trip
+                      </Button>
+
+                      <Button
+                        variant="outlined"
+                        startIcon={<Chat />}
+                        onClick={() => {
+                          onNavigate(`/chat/${trip.uploaderId}`, {
+                            state: {
+                              user: {
+                                uid: trip.uploaderId,
+                                name: trip.uploaderName,
+                                tripId: trip.id
+                              }
+                            }
+                          });
+                        }}
+                        sx={{ borderRadius: 3 }}
+                      >
+                        Chat with Driver
+                      </Button>
+
+                      {/* Pricing Info */}
+                      <Paper
+                        sx={{
+                          p: 2,
+                          bgcolor: 'info.50',
+                          border: '1px solid',
+                          borderColor: 'info.200',
+                          borderRadius: 2
+                        }}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                          <Info sx={{ fontSize: '1rem', color: 'info.main' }} />
+                          <Typography variant="subtitle2" color="info.main">
+                            Flexible Booking
+                          </Typography>
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary">
+                          Book partial routes at distance-based pricing. 
+                          Pay only for the distance you travel.
+                        </Typography>
+                      </Paper>
+                    </Stack>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
           ))}
-        </Grid>
+        </Stack>
       )}
     </Container>
   );
