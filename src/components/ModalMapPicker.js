@@ -1,22 +1,40 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { 
-  Modal, 
-  Box, 
-  Button, 
-  Typography, 
-  CircularProgress, 
+import {
+  Modal,
+  Box,
+  Button,
+  Typography,
+  CircularProgress,
   Alert,
   Paper,
   Stack,
   IconButton,
   TextField,
-  Chip
+  Chip,
+  Divider,
+  useTheme,
+  useMediaQuery,
+  alpha,
+  Zoom,
+  Fade,
+  InputAdornment
 } from "@mui/material";
-import { Close, MyLocation, Search } from "@mui/icons-material";
+import {
+  Close,
+  MyLocation,
+  Search,
+  LocationOn,
+  GpsFixed,
+  Place,
+  Navigation,
+  CheckCircle,
+  Warning,
+  Refresh
+} from "@mui/icons-material";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 
-const containerStyle = { 
-  width: "100%", 
+const containerStyle = {
+  width: "100%",
   height: "500px",
   borderRadius: "12px",
   overflow: "hidden"
@@ -27,13 +45,14 @@ const modalStyle = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { xs: "95%", md: "80%" },
-  maxWidth: 800,
+  width: { xs: "95%", md: "90%" },
+  maxWidth: 900,
   bgcolor: "background.paper",
   boxShadow: 24,
   borderRadius: 3,
   outline: "none",
-  overflow: 'hidden'
+  overflow: 'hidden',
+  maxHeight: "95vh"
 };
 
 const mapOptions = {
@@ -44,9 +63,11 @@ const mapOptions = {
   streetViewControl: false,
   rotateControl: false,
   fullscreenControl: true,
+  clickableIcons: true,
+  gestureHandling: "greedy",
   styles: [
     {
-      featureType: "poi",
+      featureType: "poi.business",
       elementType: "labels",
       stylers: [{ visibility: "off" }]
     }
@@ -60,7 +81,27 @@ const hyderabadBounds = {
   west: 78.2407
 };
 
-export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initialLocation }) {
+const quickLocations = [
+  { name: "Hitech City", lat: 17.4435, lng: 78.3772, category: "Tech Hub" },
+  { name: "Gachibowli", lat: 17.4399, lng: 78.3489, category: "Tech Hub" },
+  { name: "Secunderabad", lat: 17.4399, lng: 78.4983, category: "Railway" },
+  { name: "Uppal", lat: 17.4065, lng: 78.5691, category: "Metro" },
+  { name: "Ameerpet", lat: 17.4374, lng: 78.4482, category: "Commercial" },
+  { name: "Kukatpally", lat: 17.4849, lng: 78.4138, category: "Residential" },
+  { name: "Madhapur", lat: 17.4483, lng: 78.3915, category: "Tech Hub" },
+  { name: "Banjara Hills", lat: 17.4239, lng: 78.4738, category: "Upscale" }
+];
+
+export default function ModalMapPicker({
+  apiKey,
+  open,
+  onClose,
+  onSelect,
+  initialLocation,
+  title = "Select Location on Map"
+}) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [selectedPos, setSelectedPos] = useState(null);
   const [address, setAddress] = useState("");
   const [loadingAddress, setLoadingAddress] = useState(false);
@@ -68,15 +109,19 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
   const [searchQuery, setSearchQuery] = useState("");
   const [currentLocation, setCurrentLocation] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [markerAnimation, setMarkerAnimation] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   const center = initialLocation || { lat: 17.3850, lng: 78.4867 }; // Hyderabad center
 
-  const { isLoaded } = useJsApiLoader({
+  const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || "",
     libraries: ["places"]
   });
 
-  // Get current location
+  // Get current location on mount
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -89,37 +134,61 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
         },
         (error) => {
           console.warn("Geolocation error:", error);
+        },
+        {
+          timeout: 10000,
+          enableHighAccuracy: true
         }
       );
     }
   }, []);
 
+  const isWithinHyderabadBounds = useCallback((lat, lng) => {
+    return lat >= hyderabadBounds.south && 
+           lat <= hyderabadBounds.north && 
+           lng >= hyderabadBounds.west && 
+           lng <= hyderabadBounds.east;
+  }, []);
+
   const onMapClick = useCallback((e) => {
+    if (!e.latLng) return;
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
 
-    // Check if location is within Hyderabad bounds (approximately)
-    if (lat >= hyderabadBounds.south && lat <= hyderabadBounds.north && 
-        lng >= hyderabadBounds.west && lng <= hyderabadBounds.east) {
+    if (isWithinHyderabadBounds(lat, lng)) {
       setSelectedPos({ lat, lng });
+      setAddress(""); // Reset address to show loading
+      // Add bounce animation
+      setMarkerAnimation(window.google?.maps?.Animation?.BOUNCE);
+      setTimeout(() => setMarkerAnimation(null), 750);
     } else {
-      alert("Please select a location within Hyderabad city limits.");
+      setMapsError("Please select a location within Hyderabad city limits.");
+      setTimeout(() => setMapsError(""), 3000);
     }
-  }, []);
+  }, [isWithinHyderabadBounds]);
 
   const onMapLoad = useCallback((map) => {
     setMapInstance(map);
   }, []);
 
+  // Geocode the selected position to get address
   useEffect(() => {
     if (!selectedPos || !apiKey || !isLoaded) return;
 
     setLoadingAddress(true);
-    const geocoder = new window.google.maps.Geocoder();
+    setAddress("");
 
+    const geocoder = new window.google.maps.Geocoder();
     geocoder.geocode({ location: selectedPos }, (results, status) => {
       if (status === "OK" && results[0]) {
-        setAddress(results[0].formatted_address);
+        // Get the most relevant address
+        const bestResult = results.find(result =>
+          result.types.includes('street_address') ||
+          result.types.includes('premise') ||
+          result.types.includes('sublocality')
+        ) || results[0];
+
+        setAddress(bestResult.formatted_address);
       } else {
         setAddress("Address not found");
       }
@@ -127,229 +196,443 @@ export default function ModalMapPicker({ apiKey, open, onClose, onSelect, initia
     });
   }, [selectedPos, apiKey, isLoaded]);
 
-  const handleSave = () => {
-    if (
-      selectedPos &&
-      address &&
-      !["Address not found", "Failed to fetch address"].includes(address)
-    ) {
-      onSelect({ lat: selectedPos.lat, lng: selectedPos.lng, address });
-      onClose();
+  const handleConfirm = () => {
+    if (!selectedPos || !address || address === "Address not found") {
+      setMapsError("Please select a valid location on the map.");
+      setTimeout(() => setMapsError(""), 3000);
+      return;
     }
+
+    setIsConfirming(true);
+    setTimeout(() => {
+      onSelect({
+        lat: selectedPos.lat,
+        lng: selectedPos.lng,
+        address: address
+      });
+      setIsConfirming(false);
+      handleClose();
+    }, 500);
   };
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     if (!searchQuery.trim() || !mapInstance || !isLoaded) return;
 
+    setSearching(true);
     const service = new window.google.maps.places.PlacesService(mapInstance);
     const request = {
       query: searchQuery + " Hyderabad",
-      fields: ["place_id", "geometry", "formatted_address"],
+      fields: ["place_id", "geometry", "formatted_address", "name"],
     };
 
     service.textSearch(request, (results, status) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && results[0]) {
-        const place = results[0];
-        const location = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng()
-        };
+      setSearching(false);
+      if (status === window.google.maps.places.PlacesServiceStatus.OK && results?.length > 0) {
+        // Filter results within Hyderabad bounds
+        const validResults = results.filter(place => {
+          const location = place.geometry.location;
+          return isWithinHyderabadBounds(location.lat(), location.lng());
+        });
 
-        setSelectedPos(location);
-        mapInstance.setCenter(location);
-        mapInstance.setZoom(15);
+        if (validResults.length > 0) {
+          setSearchResults(validResults.slice(0, 5)); // Show top 5 results
+          const firstResult = validResults[0];
+          const location = {
+            lat: firstResult.geometry.location.lat(),
+            lng: firstResult.geometry.location.lng()
+          };
+
+          setSelectedPos(location);
+          mapInstance.setCenter(location);
+          mapInstance.setZoom(16);
+          setMarkerAnimation(window.google?.maps?.Animation?.BOUNCE);
+          setTimeout(() => setMarkerAnimation(null), 750);
+        } else {
+          setMapsError("No results found within Hyderabad. Try a different search term.");
+          setTimeout(() => setMapsError(""), 3000);
+        }
       } else {
-        alert("Location not found. Please try a different search term.");
+        setMapsError("Location not found. Please try a different search term.");
+        setTimeout(() => setMapsError(""), 3000);
       }
     });
-  };
+  }, [searchQuery, mapInstance, isLoaded, isWithinHyderabadBounds]);
 
   const moveToCurrentLocation = () => {
     if (currentLocation && mapInstance) {
-      setSelectedPos(currentLocation);
-      mapInstance.setCenter(currentLocation);
-      mapInstance.setZoom(15);
+      if (isWithinHyderabadBounds(currentLocation.lat, currentLocation.lng)) {
+        setSelectedPos(currentLocation);
+        mapInstance.setCenter(currentLocation);
+        mapInstance.setZoom(16);
+        setMarkerAnimation(window.google?.maps?.Animation?.BOUNCE);
+        setTimeout(() => setMarkerAnimation(null), 750);
+      } else {
+        setMapsError("Your current location is outside Hyderabad. Showing city center instead.");
+        mapInstance.setCenter(center);
+        mapInstance.setZoom(12);
+        setTimeout(() => setMapsError(""), 3000);
+      }
     } else {
-      alert("Current location not available. Please enable location services.");
+      setMapsError("Current location not available. Please enable location services or select manually.");
+      setTimeout(() => setMapsError(""), 3000);
     }
   };
-
-  const quickLocations = [
-    { name: "Hitech City", lat: 17.4435, lng: 78.3772 },
-    { name: "Gachibowli", lat: 17.4399, lng: 78.3489 },
-    { name: "Secunderabad", lat: 17.4399, lng: 78.4983 },
-    { name: "Uppal", lat: 17.4065, lng: 78.5691 },
-    { name: "Ameerpet", lat: 17.4374, lng: 78.4482 }
-  ];
 
   const selectQuickLocation = (location) => {
     setSelectedPos({ lat: location.lat, lng: location.lng });
     if (mapInstance) {
       mapInstance.setCenter({ lat: location.lat, lng: location.lng });
       mapInstance.setZoom(15);
+      setMarkerAnimation(window.google?.maps?.Animation?.BOUNCE);
+      setTimeout(() => setMarkerAnimation(null), 750);
     }
   };
 
+  const selectSearchResult = (place) => {
+    const location = {
+      lat: place.geometry.location.lat(),
+      lng: place.geometry.location.lng()
+    };
+
+    setSelectedPos(location);
+    setSearchQuery(place.name);
+    setSearchResults([]);
+
+    if (mapInstance) {
+      mapInstance.setCenter(location);
+      mapInstance.setZoom(16);
+      setMarkerAnimation(window.google?.maps?.Animation?.BOUNCE);
+      setTimeout(() => setMarkerAnimation(null), 750);
+    }
+  };
+
+  const handleClose = () => {
+    setSelectedPos(null);
+    setAddress("");
+    setSearchQuery("");
+    setSearchResults([]);
+    setMarkerAnimation(null);
+    setMapsError("");
+    onClose();
+  };
+
+  const resetMap = () => {
+    if (mapInstance) {
+      mapInstance.setCenter(center);
+      mapInstance.setZoom(12);
+      setSelectedPos(null);
+      setAddress("");
+      setSearchQuery("");
+      setSearchResults([]);
+      setMapsError("");
+    }
+  };
+
+  if (loadError) {
+    return (
+      <Modal open={open} onClose={handleClose}>
+        <Box sx={modalStyle}>
+          <Alert severity="error" sx={{ m: 2 }}>
+            Failed to load Google Maps. Please check your internet connection and try again.
+          </Alert>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2 }}>
+            <Button onClick={handleClose} sx={{ borderRadius: 2 }}>Close</Button>
+          </Box>
+        </Box>
+      </Modal>
+    );
+  }
+
   if (!isLoaded) {
-    return null;
+    return (
+      <Modal open={open} onClose={handleClose}>
+        <Box sx={modalStyle}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+            <CircularProgress />
+            <Typography variant="body1" sx={{ ml: 2 }}>Loading Google Maps...</Typography>
+          </Box>
+        </Box>
+      </Modal>
+    );
   }
 
   return (
-    <Modal open={open} onClose={onClose} closeAfterTransition>
-      <Paper sx={modalStyle}>
-        {/* Header */}
-        <Box sx={{ p: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
-              Select Location on Map
-            </Typography>
-            <IconButton onClick={onClose}>
-              <Close />
-            </IconButton>
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Click on the map to select your exact pickup or drop location
-          </Typography>
-        </Box>
+    <Modal open={open} onClose={handleClose}>
+      <Fade in={open}>
+        <Box sx={modalStyle}>
+          {/* Header */}
+          <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Box>
+                <Typography variant="h6" component="h2" fontWeight={600}>
+                  <LocationOn sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
+                  {title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Click anywhere on the map to select your exact location
+                </Typography>
+              </Box>
+              <IconButton onClick={handleClose} size="small">
+                <Close />
+              </IconButton>
+            </Stack>
+          </Box>
 
-        {/* Search and Quick Actions */}
-        <Box sx={{ p: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack spacing={2}>
-            {/* Search */}
-            <Stack direction="row" spacing={2}>
+          {/* Search and Quick Actions */}
+          <Box sx={{ p: 2 }}>
+            {/* Search Bar */}
+            <Box sx={{ position: 'relative', mb: 2 }}>
               <TextField
-                fullWidth
-                size="small"
-                placeholder="Search for a location in Hyderabad..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search for places in Hyderabad..."
+                fullWidth
+                size="small"
                 InputProps={{
-                  startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search color="action" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searching ? (
+                    <InputAdornment position="end">
+                      <CircularProgress size={20} />
+                    </InputAdornment>
+                  ) : null,
                 }}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
               />
-              <Button 
-                variant="outlined" 
+
+              {/* Search Results Dropdown */}
+              {searchResults.length > 0 && (
+                <Paper
+                  elevation={8}
+                  sx={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                    maxHeight: 200,
+                    overflow: 'auto',
+                    borderRadius: 2,
+                    mt: 1
+                  }}
+                >
+                  {searchResults.map((place, index) => (
+                    <Box
+                      key={index}
+                      onClick={() => selectSearchResult(place)}
+                      sx={{
+                        p: 2,
+                        cursor: 'pointer',
+                        borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.palette.divider}` : 'none',
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.05)
+                        }
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Place color="action" />
+                        <Box>
+                          <Typography variant="body2" fontWeight={500}>
+                            {place.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {place.formatted_address}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Paper>
+              )}
+            </Box>
+
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <Button
                 onClick={handleSearch}
-                disabled={!searchQuery.trim()}
+                disabled={!searchQuery.trim() || searching}
+                variant="outlined"
+                startIcon={searching ? <CircularProgress size={16} /> : <Search />}
+                sx={{ borderRadius: 2 }}
               >
-                Search
+                {searching ? 'Searching...' : 'Search'}
+              </Button>
+
+              <Button
+                onClick={resetMap}
+                variant="outlined"
+                startIcon={<Refresh />}
+                sx={{ borderRadius: 2 }}
+              >
+                Reset
               </Button>
             </Stack>
 
             {/* Quick Location Buttons */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                Quick Locations:
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              <Chip
+                icon={<MyLocation />}
+                label="My Location"
+                onClick={moveToCurrentLocation}
+                disabled={!currentLocation}
+                variant="outlined"
+                clickable
+                color="primary"
+                sx={{ borderRadius: 2 }}
+              />
+              {quickLocations.map((location) => (
                 <Chip
-                  label="Current Location"
-                  icon={<MyLocation />}
-                  onClick={moveToCurrentLocation}
-                  disabled={!currentLocation}
-                  size="small"
+                  key={location.name}
+                  icon={<LocationOn />}
+                  label={location.name}
+                  onClick={() => selectQuickLocation(location)}
                   variant="outlined"
                   clickable
+                  sx={{ borderRadius: 2 }}
                 />
-                {quickLocations.map((location) => (
-                  <Chip
-                    key={location.name}
-                    label={location.name}
-                    onClick={() => selectQuickLocation(location)}
-                    size="small"
-                    variant="outlined"
-                    clickable
-                  />
-                ))}
-              </Stack>
-            </Box>
-          </Stack>
-        </Box>
+              ))}
+            </Stack>
+          </Box>
 
-        {/* Map */}
-        <Box sx={{ height: 500, position: 'relative' }}>
-          {!apiKey ? (
-            <Alert severity="error" sx={{ m: 3 }}>
-              Google Maps is not configured. Add REACT_APP_GOOGLE_MAPS_API_KEY to .env and restart the dev server.
-            </Alert>
-          ) : (
-            <>
-              {mapsError && (
-                <Alert severity="error" sx={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 1 }}>
-                  {mapsError}
-                </Alert>
-              )}
-              <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={center}
-                zoom={12}
-                onClick={onMapClick}
-                onLoad={onMapLoad}
-                options={mapOptions}
-                onLoadError={() => setMapsError("Failed to load Google Maps. Check API key and referrer settings.")}
-              >
-                {selectedPos && (
-                  <Marker
-                    position={selectedPos}
-                    animation={window.google?.maps?.Animation?.BOUNCE}
-                  />
-                )}
-                {currentLocation && (
-                  <Marker
-                    position={currentLocation}
-                    icon={{
-                      url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                    }}
-                  />
-                )}
-              </GoogleMap>
-            </>
-          )}
-        </Box>
+          <Divider />
 
-        {/* Selected Location Info */}
-        {selectedPos && (
-          <Box sx={{ p: 3, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Selected Location:
-            </Typography>
-            {loadingAddress ? (
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <CircularProgress size={16} />
-                <Typography variant="body2">Fetching address...</Typography>
-              </Stack>
+          {/* Map Container */}
+          <Box sx={{ p: 2 }}>
+            {!apiKey ? (
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                Google Maps is not configured. Add REACT_APP_GOOGLE_MAPS_API_KEY to .env and restart the server.
+              </Alert>
             ) : (
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                {address || "Click on map to select a location"}
-              </Typography>
+              <>
+                {mapsError && (
+                  <Alert 
+                    severity="warning" 
+                    sx={{ mb: 2, borderRadius: 2 }}
+                    icon={<Warning />}
+                  >
+                    {mapsError}
+                  </Alert>
+                )}
+
+                <GoogleMap
+                  mapContainerStyle={containerStyle}
+                  center={selectedPos || center}
+                  zoom={selectedPos ? 15 : 11}
+                  options={mapOptions}
+                  onClick={onMapClick}
+                  onLoad={onMapLoad}
+                  onError={() => setMapsError("Failed to load Google Maps. Check API key and settings.")}
+                >
+                  {/* Selected location marker with enhanced styling */}
+                  {selectedPos && (
+                    <Marker
+                      position={selectedPos}
+                      animation={markerAnimation}
+                      icon={{
+                        url: `data:image/svg+xml,${encodeURIComponent(`
+                          <svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M15 0C6.7 0 0 6.7 0 15c0 8.3 15 25 15 25s15-16.7 15-25c0-8.3-6.7-15-15-15z" fill="#667eea"/>
+                            <circle cx="15" cy="15" r="8" fill="white"/>
+                            <circle cx="15" cy="15" r="4" fill="#667eea"/>
+                          </svg>
+                        `)}`,
+                        scaledSize: new window.google.maps.Size(30, 40),
+                        anchor: new window.google.maps.Point(15, 40),
+                      }}
+                    />
+                  )}
+
+                  {/* Current location marker */}
+                  {currentLocation && (
+                    <Marker
+                      position={currentLocation}
+                      icon={{
+                        url: `data:image/svg+xml,${encodeURIComponent(`
+                          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="10" cy="10" r="10" fill="#4CAF50"/>
+                            <circle cx="10" cy="10" r="6" fill="white"/>
+                            <circle cx="10" cy="10" r="3" fill="#4CAF50"/>
+                          </svg>
+                        `)}`,
+                        scaledSize: new window.google.maps.Size(20, 20),
+                        anchor: new window.google.maps.Point(10, 10),
+                      }}
+                    />
+                  )}
+                </GoogleMap>
+              </>
             )}
           </Box>
-        )}
 
-        {/* Actions */}
-        <Box sx={{ p: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Stack direction="row" spacing={2} justifyContent="flex-end">
-            <Button onClick={onClose} color="inherit">
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleSave}
-              disabled={!selectedPos || !address || loadingAddress || 
-                       ["Address not found", "Failed to fetch address"].includes(address)}
-              sx={{
-                background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                '&:hover': {
-                  background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
-                }
-              }}
-            >
-              Save Location
-            </Button>
-          </Stack>
+          {/* Selected Location Info and Actions */}
+          <Box sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}`, bgcolor: 'background.default' }}>
+            {selectedPos ? (
+              <Stack spacing={2}>
+                <Box>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                    <CheckCircle color="success" />
+                    <Typography variant="subtitle2" fontWeight={600} color="success.main">
+                      Selected Location:
+                    </Typography>
+                  </Stack>
+
+                  {loadingAddress ? (
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <CircularProgress size={16} />
+                      <Typography variant="body2" color="text.secondary">
+                        Getting address...
+                      </Typography>
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
+                      {address || "Address not available"}
+                    </Typography>
+                  )}
+                </Box>
+
+                <Stack direction="row" spacing={2}>
+                  <Button
+                    onClick={handleClose}
+                    variant="outlined"
+                    sx={{ borderRadius: 2, flex: 1 }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConfirm}
+                    disabled={isConfirming || loadingAddress || !address || address === "Address not found"}
+                    variant="contained"
+                    startIcon={isConfirming ? <CircularProgress size={16} /> : <CheckCircle />}
+                    sx={{
+                      borderRadius: 2,
+                      flex: 2,
+                      background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                      }
+                    }}
+                  >
+                    {isConfirming ? 'Confirming...' : 'Confirm Location'}
+                  </Button>
+                </Stack>
+              </Stack>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <LocationOn sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Click on the map to select your location
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Use search or quick buttons above for faster selection
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Box>
-      </Paper>
+      </Fade>
     </Modal>
   );
 }

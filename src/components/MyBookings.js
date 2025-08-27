@@ -2,335 +2,82 @@ import React, { useState, useEffect } from "react";
 import {
   Container,
   Card,
+  CardContent,
   Typography,
   Button,
-  CircularProgress,
   Box,
   Alert,
-  CardContent,
   Chip,
   Grid,
-  Paper,
   Stack,
-  Avatar,
   Divider,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Tabs,
-  Tab,
-  Badge,
-  IconButton,
-  Tooltip,
+  CircularProgress,
   alpha,
-  useTheme
+  useTheme,
+  useMediaQuery,
+  Paper,
+  Skeleton,
+  Tooltip,
+  Badge,
+  Fade
 } from "@mui/material";
 import {
   DirectionsCar,
   TwoWheeler,
-  Person,
   Schedule,
   LocationOn,
   Cancel,
-  CheckCircle,
-  Pending,
-  Event,
-  Phone,
   Chat,
+  Phone,
+  Star,
   Info,
-  Warning,
-  History,
-  BookmarkAdded,
-  Route,
+  Receipt,
+  Navigation,
+  CheckCircle,
+  ErrorOutline,
   AccessTime,
-  CalendarToday
+  Person,
+  Route,
+  Payment,
+  History,
+  Refresh
 } from "@mui/icons-material";
 import {
   collection,
   query,
+  where,
   getDocs,
   doc,
-  getDoc,
-  where,
   updateDoc,
+  getDoc,
   serverTimestamp,
-  orderBy
+  addDoc
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-
-const TabPanel = ({ children, value, index, ...other }) => {
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-    </div>
-  );
-};
-
-const BookingCard = ({ booking, type, onCancel, onChat, theme }) => {
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'confirmed': return 'success';
-      case 'cancelled': return 'error';
-      case 'pending': return 'warning';
-      default: return 'default';
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'confirmed': return <CheckCircle />;
-      case 'cancelled': return <Cancel />;
-      case 'pending': return <Pending />;
-      default: return <Event />;
-    }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "N/A";
-    const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
-    return dt.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric"
-    });
-  };
-
-  const formatTime = (date) => {
-    if (!date) return "N/A";
-    const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
-    return dt.toLocaleTimeString("en-IN", { 
-      hour: "2-digit", 
-      minute: "2-digit",
-      hour12: true 
-    });
-  };
-
-  const getVehicleIcon = (vehicleType) => {
-    return vehicleType === "Car" ? <DirectionsCar /> : <TwoWheeler />;
-  };
-
-  const isPastTrip = () => {
-    if (!booking.tripDate) return false;
-    const tripDate = booking.tripDate.seconds ? 
-      new Date(booking.tripDate.seconds * 1000) : 
-      new Date(booking.tripDate);
-    return tripDate < new Date();
-  };
-
-  const canCancel = () => {
-    return booking.status === 'confirmed' && !isPastTrip();
-  };
-
-  return (
-    <Card 
-      sx={{ 
-        borderRadius: 4,
-        border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: theme.shadows
-        }
-      }}
-    >
-      <CardContent sx={{ p: 3 }}>
-        {/* Header */}
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Avatar sx={{ bgcolor: alpha('primary.main', 0.1), width: 50, height: 50 }}>
-              {getVehicleIcon(booking.vehicleType)}
-            </Avatar>
-            
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                {type === 'created' ? 'Your Trip' : 'Booked Trip'}
-              </Typography>
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography variant="body2" color="text.secondary">
-                  {booking.vehicleType} • {booking.vehicleNumber}
-                </Typography>
-                {type === 'booked' && booking.bookingSeats && (
-                  <Chip
-                    size="small"
-                    icon={<Person />}
-                    label={`${booking.bookingSeats} seat${booking.bookingSeats > 1 ? 's' : ''}`}
-                    variant="outlined"
-                  />
-                )}
-              </Stack>
-            </Box>
-          </Stack>
-
-          <Chip
-            icon={getStatusIcon(booking.status)}
-            label={booking.status?.toUpperCase() || 'ACTIVE'}
-            color={getStatusColor(booking.status)}
-            variant="outlined"
-          />
-        </Stack>
-
-        {/* Route */}
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-            ROUTE
-          </Typography>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Box sx={{ flex: 1 }}>
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Avatar sx={{ width: 12, height: 12, bgcolor: 'success.main' }} />
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {booking.startLocation}
-                </Typography>
-              </Stack>
-            </Box>
-            
-            <Box sx={{ px: 2 }}>
-              <Route sx={{ color: 'text.disabled', transform: 'rotate(90deg)' }} />
-            </Box>
-            
-            <Box sx={{ flex: 1 }}>
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Avatar sx={{ width: 12, height: 12, bgcolor: 'error.main' }} />
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {booking.endLocation}
-                </Typography>
-              </Stack>
-            </Box>
-          </Stack>
-        </Box>
-
-        {/* Trip Details */}
-        <Grid container spacing={2} mb={2}>
-          <Grid item xs={6}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <CalendarToday color="action" sx={{ fontSize: 20 }} />
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Date
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {formatDate(booking.tripDate)}
-                </Typography>
-              </Box>
-            </Stack>
-          </Grid>
-
-          <Grid item xs={6}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <AccessTime color="action" sx={{ fontSize: 20 }} />
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Time
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {formatTime(booking.tripDate)}
-                </Typography>
-              </Box>
-            </Stack>
-          </Grid>
-        </Grid>
-
-        {/* Driver/Passenger Info */}
-        {type === 'booked' && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary">
-              DRIVER
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {booking.driverName} {booking.driverUsername && `(@${booking.driverUsername})`}
-            </Typography>
-          </Box>
-        )}
-
-        {type === 'created' && booking.totalBookings > 0 && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary">
-              BOOKINGS
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {booking.totalBookings} passenger{booking.totalBookings > 1 ? 's' : ''} booked
-            </Typography>
-          </Box>
-        )}
-
-        {/* Description */}
-        {booking.description && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{
-              fontStyle: 'italic',
-              p: 2,
-              bgcolor: alpha(theme.palette.background.default, 0.5),
-              borderRadius: 2,
-              border: `1px solid ${alpha(theme.palette.divider, 0.1)}`
-            }}>
-              "{booking.description}"
-            </Typography>
-          </Box>
-        )}
-
-        {/* Actions */}
-        <Stack direction="row" spacing={1} justifyContent="flex-end">
-          {type === 'booked' && booking.driverUserId && (
-            <Tooltip title="Chat with driver">
-              <IconButton 
-                size="small"
-                onClick={() => onChat(booking.driverUserId, booking.driverName)}
-                sx={{ bgcolor: alpha('primary.main', 0.1) }}
-              >
-                <Chat color="primary" />
-              </IconButton>
-            </Tooltip>
-          )}
-
-          {canCancel() && (
-            <Button
-              variant="outlined"
-              color="error"
-              size="small"
-              startIcon={<Cancel />}
-              onClick={() => onCancel(booking)}
-              sx={{ borderRadius: 2 }}
-            >
-              Cancel
-            </Button>
-          )}
-
-          {booking.status === 'cancelled' && (
-            <Chip
-              icon={<Warning />}
-              label="Cancelled"
-              color="error"
-              size="small"
-            />
-          )}
-
-          {isPastTrip() && booking.status === 'confirmed' && (
-            <Chip
-              icon={<CheckCircle />}
-              label="Completed"
-              color="success"
-              size="small"
-            />
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-};
+import { useNavigate } from "react-router-dom";
 
 export default function MyBookings({ user, onNavigate }) {
   const theme = useTheme();
-  const [activeTab, setActiveTab] = useState(0);
-  const [bookedTrips, setBookedTrips] = useState([]);
-  const [createdTrips, setCreatedTrips] = useState([]);
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const navigate = useNavigate();
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [cancelDialog, setCancelDialog] = useState({ open: false, booking: null });
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("all");
 
+  // Add comprehensive user validation
   useEffect(() => {
-    if (!user) {
+    if (!user || !user.uid) {
+      console.error("User is undefined or missing uid:", user);
       onNavigate("/auth");
       return;
     }
@@ -338,323 +85,634 @@ export default function MyBookings({ user, onNavigate }) {
     loadBookings();
   }, [user, onNavigate]);
 
-  const loadBookings = async () => {
-    setLoading(true);
-    setError("");
+  const loadBookings = async (isRefresh = false) => {
+    // Early return if user is not properly defined
+    if (!user || !user.uid) {
+      console.error("Cannot load bookings: user is undefined");
+      setError("User authentication error. Please log in again.");
+      setLoading(false);
+      return;
+    }
 
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setError("");
+    
     try {
-      // Load trips user has booked
+      // Get user's bookings with proper error handling
       const bookingsQuery = query(
         collection(db, "bookings"),
-        where("userId", "==", user.uid),
-        orderBy("bookedAt", "desc")
+        where("userId", "==", user.uid)
       );
-      const bookingsSnapshot = await getDocs(bookingsQuery);
       
-      const bookedTripsData = [];
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const bookingsData = [];
+
       for (const bookingDoc of bookingsSnapshot.docs) {
         const booking = { id: bookingDoc.id, ...bookingDoc.data() };
         
-        // Get trip details
-        try {
-          const tripDoc = await getDoc(doc(db, "trips", booking.tripId));
-          if (tripDoc.exists()) {
-            const trip = tripDoc.data();
-            
-            // Get driver details
-            const driverDoc = await getDoc(doc(db, "users", trip.uploaderId));
-            const driver = driverDoc.exists() ? driverDoc.data() : {};
-            
-            bookedTripsData.push({
-              ...booking,
-              ...trip,
-              tripDate: trip.date,
-              driverName: driver.name || "Unknown Driver",
-              driverUsername: driver.username,
-              driverUserId: trip.uploaderId
-            });
+        // Get trip details with proper error handling
+        if (booking.tripId) {
+          try {
+            const tripDoc = await getDoc(doc(db, "trips", booking.tripId));
+            if (tripDoc.exists()) {
+              booking.trip = tripDoc.data();
+              
+              // Get driver details with null checks
+              if (booking.trip && booking.trip.uploaderId) {
+                const driverDoc = await getDoc(doc(db, "users", booking.trip.uploaderId));
+                if (driverDoc.exists()) {
+                  booking.driver = driverDoc.data();
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Error fetching trip details:", err);
+            // Continue processing other bookings even if one fails
           }
-        } catch (err) {
-          console.error("Error loading trip details:", err);
         }
+        bookingsData.push(booking);
       }
 
-      // Load trips user has created
-      const createdTripsQuery = query(
-        collection(db, "trips"),
-        where("uploaderId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      );
-      const createdTripsSnapshot = await getDocs(createdTripsQuery);
-      
-      const createdTripsData = [];
-      for (const tripDoc of createdTripsSnapshot.docs) {
-        const trip = { id: tripDoc.id, ...tripDoc.data() };
-        
-        // Get booking count for this trip
-        const tripBookingsQuery = query(
-          collection(db, "bookings"),
-          where("tripId", "==", tripDoc.id),
-          where("status", "!=", "cancelled")
-        );
-        const tripBookingsSnapshot = await getDocs(tripBookingsQuery);
-        
-        createdTripsData.push({
-          ...trip,
-          tripDate: trip.date,
-          totalBookings: tripBookingsSnapshot.size,
-          status: 'confirmed' // Created trips are always active
-        });
-      }
+      // Sort by booking date (most recent first)
+      bookingsData.sort((a, b) => {
+        const aTime = a.bookedAt?.seconds || 0;
+        const bTime = b.bookedAt?.seconds || 0;
+        return bTime - aTime;
+      });
 
-      setBookedTrips(bookedTripsData);
-      setCreatedTrips(createdTripsData);
+      setBookings(bookingsData);
     } catch (error) {
       console.error("Error loading bookings:", error);
       setError("Failed to load bookings. Please try again.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleCancelBooking = async (booking) => {
+  const handleCancelBooking = async () => {
+    if (!selectedBooking || !user || !user.uid) return;
+
     setCancelling(true);
-    
     try {
-      // Update booking status to cancelled
-      await updateDoc(doc(db, "bookings", booking.id), {
+      // Update booking status
+      await updateDoc(doc(db, "bookings", selectedBooking.id), {
         status: "cancelled",
         cancelledAt: serverTimestamp()
       });
 
-      // Restore seats if it's a car trip
-      if (booking.vehicleType === "Car" && booking.bookingSeats) {
-        const tripRef = doc(db, "trips", booking.tripId);
-        const tripDoc = await getDoc(tripRef);
-        
-        if (tripDoc.exists()) {
-          const currentSeats = tripDoc.data().seatsAvailable || 0;
+      // Restore seats if it's a car booking
+      if (selectedBooking.trip?.vehicleType === "Car" && selectedBooking.bookingSeats) {
+        const tripRef = doc(db, "trips", selectedBooking.tripId);
+        const currentTrip = await getDoc(tripRef);
+        if (currentTrip.exists()) {
           await updateDoc(tripRef, {
-            seatsAvailable: currentSeats + booking.bookingSeats
+            seatsAvailable: currentTrip.data().seatsAvailable + selectedBooking.bookingSeats
           });
         }
       }
 
-      setCancelDialog({ open: false, booking: null });
-      loadBookings(); // Refresh the list
-      
+      // Create notification for driver with proper null checks
+      if (selectedBooking.driver && selectedBooking.trip) {
+        const userName = user.displayName || user.email || "User";
+        const notificationData = {
+          userId: selectedBooking.trip.uploaderId,
+          type: 'cancellation',
+          title: 'Booking Cancelled',
+          message: `${userName} cancelled their booking for your trip from ${selectedBooking.pickupLocation || 'Unknown'} to ${selectedBooking.dropLocation || 'Unknown'}`,
+          tripId: selectedBooking.tripId,
+          bookerId: user.uid,
+          createdAt: serverTimestamp(),
+          read: false
+        };
+        await addDoc(collection(db, "notifications"), notificationData);
+      }
+
+      // Refresh bookings
+      await loadBookings();
+      setCancelDialogOpen(false);
+      setSelectedBooking(null);
     } catch (error) {
       console.error("Error cancelling booking:", error);
-      alert("Failed to cancel booking. Please try again.");
+      setError("Failed to cancel booking. Please try again.");
     } finally {
       setCancelling(false);
     }
   };
 
-  const handleChat = (userId, userName) => {
-    onNavigate(`/chat/${userId}`, {
-      state: {
-        user: {
-          uid: userId,
-          name: userName
-        }
-      }
-    });
+  const formatDate = (date) => {
+    if (!date) return "N/A";
+    try {
+      const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+      return dt.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        weekday: "short"
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Invalid Date";
+    }
   };
 
-  const getTabCounts = () => {
-    const activeBooked = bookedTrips.filter(b => b.status !== 'cancelled').length;
-    const activeCreated = createdTrips.filter(t => {
-      const tripDate = t.tripDate?.seconds ? 
-        new Date(t.tripDate.seconds * 1000) : 
-        new Date(t.tripDate || 0);
-      return tripDate >= new Date();
-    }).length;
-
-    return { activeBooked, activeCreated };
+  const formatTime = (date) => {
+    if (!date) return "N/A";
+    try {
+      const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+      return dt.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch (error) {
+      console.error("Error formatting time:", error);
+      return "Invalid Time";
+    }
   };
 
-  const { activeBooked, activeCreated } = getTabCounts();
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "confirmed": return "success";
+      case "cancelled": return "error";
+      case "completed": return "info";
+      default: return "default";
+    }
+  };
 
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "confirmed": return <CheckCircle />;
+      case "cancelled": return <ErrorOutline />;
+      case "completed": return <CheckCircle />;
+      default: return <Info />;
+    }
+  };
+
+  const getVehicleIcon = (vehicleType) => {
+    switch (vehicleType) {
+      case "Car": return <DirectionsCar />;
+      case "Bike":
+      case "Scooter": return <TwoWheeler />;
+      default: return <DirectionsCar />;
+    }
+  };
+
+  const calculateFare = (distance) => {
+    if (!distance || isNaN(parseFloat(distance))) return "N/A";
+    const fare = parseFloat(distance) * 2.5; // ₹2.5 per km
+    return `₹${fare.toFixed(2)}`;
+  };
+
+  const isUpcomingTrip = (tripDate) => {
+    if (!tripDate) return false;
+    try {
+      const dt = tripDate.seconds ? new Date(tripDate.seconds * 1000) : new Date(tripDate);
+      return dt > new Date();
+    } catch (error) {
+      console.error("Error checking if trip is upcoming:", error);
+      return false;
+    }
+  };
+
+  const getTimeUntilTrip = (tripDate) => {
+    if (!tripDate) return "";
+    try {
+      const dt = tripDate.seconds ? new Date(tripDate.seconds * 1000) : new Date(tripDate);
+      const now = new Date();
+      const diffTime = dt.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffTime < 0) return "Past trip";
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Tomorrow";
+      if (diffDays < 7) return `In ${diffDays} days`;
+      return `In ${Math.ceil(diffDays / 7)} week${diffDays >= 14 ? 's' : ''}`;
+    } catch (error) {
+      console.error("Error calculating time until trip:", error);
+      return "Unknown";
+    }
+  };
+
+  const filteredBookings = bookings.filter(booking => {
+    if (filterStatus === "all") return true;
+    if (filterStatus === "upcoming") return booking.status === "confirmed" && isUpcomingTrip(booking.trip?.date);
+    if (filterStatus === "past") return booking.status === "completed" || !isUpcomingTrip(booking.trip?.date);
+    return booking.status === filterStatus;
+  });
+
+  // Show loading with better error handling
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress size={60} />
-        <Typography variant="h6" sx={{ mt: 2, color: 'text.secondary' }}>
-          Loading your bookings...
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          My Bookings
         </Typography>
+        {[1, 2, 3].map((n) => (
+          <Skeleton key={n} variant="rectangular" height={200} sx={{ mb: 2, borderRadius: 2 }} />
+        ))}
+      </Container>
+    );
+  }
+
+  // Early return if user is not properly defined
+  if (!user || !user.uid) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          User authentication error. Please log in again.
+        </Alert>
+        <Button variant="contained" onClick={() => onNavigate("/auth")}>
+          Go to Login
+        </Button>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <>
       {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white',
-          p: 4,
-          borderRadius: 4,
-          mb: 4,
-          textAlign: 'center'
-        }}
-      >
-        <BookmarkAdded sx={{ fontSize: 48, mb: 2, opacity: 0.9 }} />
-        <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
-          My Bookings
-        </Typography>
-        <Typography variant="h6" sx={{ opacity: 0.9 }}>
-          Manage your trips and bookings
-        </Typography>
-      </Paper>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Tabs */}
-      <Paper sx={{ borderRadius: 3, mb: 4 }}>
-        <Tabs
-          value={activeTab}
-          onChange={(e, newValue) => setActiveTab(newValue)}
-          sx={{ px: 2 }}
-        >
-          <Tab
-            label={
-              <Badge badgeContent={activeBooked} color="primary" sx={{ '& .MuiBadge-badge': { right: -8, top: 4 } }}>
-                Booked Trips
-              </Badge>
-            }
-          />
-          <Tab
-            label={
-              <Badge badgeContent={activeCreated} color="secondary" sx={{ '& .MuiBadge-badge': { right: -8, top: 4 } }}>
-                My Trips
-              </Badge>
-            }
-          />
-        </Tabs>
-      </Paper>
-
-      {/* Tab Panels */}
-      <TabPanel value={activeTab} index={0}>
-        {bookedTrips.length === 0 ? (
-          <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 4 }}>
-            <Avatar sx={{ width: 80, height: 80, bgcolor: 'grey.100', mx: 'auto', mb: 3 }}>
-              <Event sx={{ fontSize: 40, color: 'grey.400' }} />
-            </Avatar>
-            <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
-              No bookings yet
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+          <Box>
+            <Typography variant="h4" gutterBottom fontWeight={700}>
+              My Bookings
             </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Start exploring available trips and book your first ride!
+            <Typography variant="body1" color="text.secondary">
+              Track and manage your trip bookings
             </Typography>
+          </Box>
+          <Stack direction="row" spacing={2}>
             <Button
-              variant="contained"
+              onClick={() => loadBookings(true)}
+              disabled={refreshing}
+              variant="outlined"
+              startIcon={refreshing ? <CircularProgress size={16} /> : <Refresh />}
+              sx={{ borderRadius: 2 }}
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+            <Button
               onClick={() => onNavigate('/trips')}
-              sx={{ borderRadius: 2 }}
-            >
-              Find Trips
-            </Button>
-          </Paper>
-        ) : (
-          <Grid container spacing={3}>
-            {bookedTrips.map((booking) => (
-              <Grid item xs={12} key={booking.id}>
-                <BookingCard
-                  booking={booking}
-                  type="booked"
-                  onCancel={(booking) => setCancelDialog({ open: true, booking })}
-                  onChat={handleChat}
-                  theme={theme}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        )}
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={1}>
-        {createdTrips.length === 0 ? (
-          <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 4 }}>
-            <Avatar sx={{ width: 80, height: 80, bgcolor: 'grey.100', mx: 'auto', mb: 3 }}>
-              <DirectionsCar sx={{ fontSize: 40, color: 'grey.400' }} />
-            </Avatar>
-            <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
-              No trips created
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Create your first trip and start sharing rides with others!
-            </Typography>
-            <Button
               variant="contained"
-              onClick={() => onNavigate('/create-trip')}
-              sx={{ borderRadius: 2 }}
+              sx={{
+                borderRadius: 2,
+                background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                },
+              }}
             >
-              Create Trip
+              Find New Trips
             </Button>
+          </Stack>
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+            <Button onClick={() => loadBookings()}>Retry</Button>
+            {error}
+          </Alert>
+        )}
+
+        {/* Filter Chips */}
+        {bookings.length > 0 && (
+          <Stack direction="row" spacing={1} mb={3} flexWrap="wrap">
+            {[
+              { key: "all", label: "All Bookings", count: bookings.length },
+              { key: "upcoming", label: "Upcoming", count: bookings.filter(b => b.status === "confirmed" && isUpcomingTrip(b.trip?.date)).length },
+              { key: "completed", label: "Completed", count: bookings.filter(b => b.status === "completed").length },
+              { key: "cancelled", label: "Cancelled", count: bookings.filter(b => b.status === "cancelled").length }
+            ].map((filter) => (
+              <Chip
+                key={filter.key}
+                label={`${filter.label} (${filter.count})`}
+                onClick={() => setFilterStatus(filter.key)}
+                color={filterStatus === filter.key ? "primary" : "default"}
+                variant={filterStatus === filter.key ? "filled" : "outlined"}
+                sx={{ borderRadius: 2 }}
+              />
+            ))}
+          </Stack>
+        )}
+
+        {filteredBookings.length === 0 ? (
+          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
+            {bookings.length === 0 ? (
+              <>
+                <LocationOn sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h5" gutterBottom>
+                  No Bookings Yet
+                </Typography>
+                <Typography variant="body1" color="text.secondary" mb={3}>
+                  You haven't booked any trips yet. Explore available rides and start your journey!
+                </Typography>
+                <Button
+                  onClick={() => onNavigate('/trips')}
+                  variant="contained"
+                  size="large"
+                  sx={{
+                    borderRadius: 3,
+                    px: { xs: 3, md: 4 },
+                    py: 1.5,
+                    background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                    '&:hover': {
+                      background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                    },
+                  }}
+                >
+                  Find Rides
+                </Button>
+              </>
+            ) : (
+              <>
+                <Info sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  No {filterStatus} bookings found
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Try selecting a different filter to see your bookings.
+                </Typography>
+              </>
+            )}
           </Paper>
         ) : (
           <Grid container spacing={3}>
-            {createdTrips.map((trip) => (
-              <Grid item xs={12} key={trip.id}>
-                <BookingCard
-                  booking={trip}
-                  type="created"
-                  onChat={handleChat}
-                  theme={theme}
-                />
+            {filteredBookings.map((booking, index) => (
+              <Grid item xs={12} key={booking.id}>
+                <Card
+                  elevation={2}
+                  sx={{
+                    borderRadius: 3,
+                    overflow: 'visible',
+                    position: 'relative',
+                    '&:hover': {
+                      boxShadow: theme.shadows[6],
+                    },
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <CardContent sx={{ p: 3 }}>
+                    {/* Status Badge */}
+                    <Chip
+                      icon={getStatusIcon(booking.status)}
+                      label={booking.status?.charAt(0)?.toUpperCase() + booking.status?.slice(1) || 'Unknown'}
+                      color={getStatusColor(booking.status)}
+                      variant="filled"
+                      size="small"
+                      sx={{ position: 'absolute', top: 16, right: 16 }}
+                    />
+
+                    {/* Vehicle and Time Info */}
+                    <Stack direction="row" spacing={2} alignItems="center" mb={2}>
+                      {getVehicleIcon(booking.trip?.vehicleType)}
+                      <Box>
+                        <Typography variant="h6" fontWeight={600}>
+                          {booking.trip?.vehicleType || 'Unknown'} - {booking.trip?.vehicleNumber || 'Unknown'}
+                        </Typography>
+                        {booking.trip?.vehicleModel && (
+                          <Chip label={booking.trip.vehicleModel} size="small" variant="outlined" />
+                        )}
+                      </Box>
+                      {isUpcomingTrip(booking.trip?.date) && booking.status === "confirmed" && (
+                        <Chip
+                          icon={<Schedule />}
+                          label={getTimeUntilTrip(booking.trip?.date)}
+                          color="warning"
+                          variant="outlined"
+                          size="small"
+                        />
+                      )}
+                    </Stack>
+
+                    <Grid container spacing={3}>
+                      {/* Journey Information */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          Your Journey
+                        </Typography>
+                        <Stack spacing={1}>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <LocationOn color="success" fontSize="small" />
+                            <Typography variant="body2" fontWeight={500}>
+                              From
+                            </Typography>
+                          </Box>
+                          <Typography variant="body1" sx={{ ml: 3, mb: 1 }}>
+                            {booking.pickupLocation || 'Not specified'}
+                          </Typography>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <LocationOn color="error" fontSize="small" />
+                            <Typography variant="body2" fontWeight={500}>
+                              To
+                            </Typography>
+                          </Box>
+                          <Typography variant="body1" sx={{ ml: 3 }}>
+                            {booking.dropLocation || 'Not specified'}
+                          </Typography>
+                        </Stack>
+
+                        {/* Fare and Distance */}
+                        {booking.estimatedDistance && (
+                          <Stack direction="row" spacing={1} mt={2}>
+                            <Chip
+                              icon={<Route />}
+                              label={`${booking.estimatedDistance} km`}
+                              variant="outlined"
+                              size="small"
+                            />
+                            <Chip
+                              icon={<Payment />}
+                              label={calculateFare(booking.estimatedDistance)}
+                              color="success"
+                              variant="outlined"
+                              size="small"
+                            />
+                          </Stack>
+                        )}
+                      </Grid>
+
+                      {/* Trip and Driver Info */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          Trip Schedule
+                        </Typography>
+                        <Typography variant="body1" gutterBottom>
+                          {formatDate(booking.trip?.date)} at {formatTime(booking.trip?.date)}
+                        </Typography>
+
+                        {booking.driver && (
+                          <>
+                            <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
+                              Driver
+                            </Typography>
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <Person fontSize="small" />
+                              <Typography variant="body1">
+                                {booking.driver.name || 'Unknown Driver'}
+                              </Typography>
+                            </Stack>
+                            {booking.driver.username && (
+                              <Typography variant="body2" color="text.secondary" sx={{ ml: 3 }}>
+                                @{booking.driver.username}
+                              </Typography>
+                            )}
+                          </>
+                        )}
+
+                        {booking.trip?.vehicleType === "Car" && booking.bookingSeats && (
+                          <Chip
+                            icon={<Person />}
+                            label={`${booking.bookingSeats} seat${booking.bookingSeats > 1 ? 's' : ''} booked`}
+                            color="info"
+                            variant="outlined"
+                            size="small"
+                            sx={{ mb: 2 }}
+                          />
+                        )}
+                      </Grid>
+                    </Grid>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Action Buttons */}
+                    <Stack direction="row" spacing={2} flexWrap="wrap">
+                      {booking.status === "confirmed" && booking.driver && (
+                        <>
+                          <Button
+                            onClick={() => {
+                              if (navigate && booking.driver?.uid) {
+                                navigate(`/chat/${booking.driver.uid}`, {
+                                  state: {
+                                    user: {
+                                      uid: booking.driver.uid,
+                                      name: booking.driver.name || 'Driver',
+                                      tripId: booking.tripId
+                                    }
+                                  }
+                                });
+                              }
+                            }}
+                            startIcon={<Chat />}
+                            variant="outlined"
+                            size="small"
+                            sx={{ borderRadius: 2 }}
+                          >
+                            Chat Driver
+                          </Button>
+
+                          {booking.driver.phone && (
+                            <Button
+                              onClick={() => window.open(`tel:${booking.driver.phone}`, '_self')}
+                              startIcon={<Phone />}
+                              variant="outlined"
+                              size="small"
+                              sx={{ borderRadius: 2 }}
+                            >
+                              Call
+                            </Button>
+                          )}
+
+                          {isUpcomingTrip(booking.trip?.date) && (
+                            <Button
+                              onClick={() => {
+                                setSelectedBooking(booking);
+                                setCancelDialogOpen(true);
+                              }}
+                              startIcon={<Cancel />}
+                              color="error"
+                              variant="outlined"
+                              size="small"
+                              sx={{ borderRadius: 2 }}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </>
+                      )}
+
+                      {booking.status === "completed" && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          sx={{ borderRadius: 2 }}
+                          onClick={() => {
+                            // TODO: Implement rating system
+                            alert("Rating system coming soon!");
+                          }}
+                        >
+                          Rate Trip
+                        </Button>
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
               </Grid>
             ))}
           </Grid>
         )}
-      </TabPanel>
+      </Container>
 
       {/* Cancel Confirmation Dialog */}
       <Dialog
-        open={cancelDialog.open}
-        onClose={() => setCancelDialog({ open: false, booking: null })}
+        open={cancelDialogOpen}
+        onClose={() => !cancelling && setCancelDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
       >
         <DialogTitle>Cancel Booking</DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Are you sure you want to cancel this booking?
-          </Alert>
-          {cancelDialog.booking && (
-            <Box>
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>Trip:</strong> {cancelDialog.booking.startLocation} → {cancelDialog.booking.endLocation}
+          <Typography gutterBottom>
+            Are you sure you want to cancel this booking? This action cannot be undone.
+          </Typography>
+          {selectedBooking && (
+            <Box mt={2}>
+              <Typography variant="subtitle2" gutterBottom>
+                Booking Details:
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                This action cannot be undone. Your seats will be made available for other passengers.
+              <Typography variant="body2">
+                • From: {selectedBooking.pickupLocation || 'Not specified'}
               </Typography>
+              <Typography variant="body2">
+                • To: {selectedBooking.dropLocation || 'Not specified'}
+              </Typography>
+              <Typography variant="body2">
+                • Date: {formatDate(selectedBooking.trip?.date)}
+              </Typography>
+              {selectedBooking.trip?.vehicleType === "Car" && selectedBooking.bookingSeats && (
+                <Typography variant="body2" color="text.secondary" mt={1}>
+                  Your {selectedBooking.bookingSeats} seat(s) will be restored and available for other passengers.
+                </Typography>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button 
-            onClick={() => setCancelDialog({ open: false, booking: null })}
+          <Button
+            onClick={() => setCancelDialogOpen(false)}
             disabled={cancelling}
+            sx={{ borderRadius: 2 }}
           >
             Keep Booking
           </Button>
           <Button
-            onClick={() => handleCancelBooking(cancelDialog.booking)}
+            onClick={handleCancelBooking}
             color="error"
             variant="contained"
             disabled={cancelling}
+            startIcon={cancelling ? <CircularProgress size={16} /> : null}
             sx={{ borderRadius: 2 }}
           >
             {cancelling ? "Cancelling..." : "Cancel Booking"}
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </>
   );
 }
