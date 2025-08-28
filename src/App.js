@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocat
 import { CssBaseline, CircularProgress, Box, Container, Alert } from "@mui/material";
 import { SnackbarProvider } from "notistack";
 import { ThemeProvider } from "@mui/material/styles";
-import { useJsApiLoader } from "@react-google-maps/api";
 
 // Firebase
 import { auth, db } from "./firebase";
@@ -31,8 +30,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 // Theme
 import { lightTheme, darkTheme } from "./theme";
 
-const libraries = ["places"];
-
 function AppWrapper() {
   return (
     <ErrorBoundary>
@@ -54,11 +51,6 @@ function ThemeProviderWrapper() {
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [appError, setAppError] = useState("");
-
-  const { isLoaded: mapsLoaded, loadError: mapsError } = useJsApiLoader({
-    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "",
-    libraries,
-  });
 
   const theme = useMemo(() => lightTheme, []);
 
@@ -171,10 +163,6 @@ function ThemeProviderWrapper() {
     );
   }
 
-  if (mapsError) {
-    console.error("🗺️ Google Maps loading error:", mapsError);
-  }
-
   if (appError) {
     return (
       <ThemeProvider theme={theme}>
@@ -196,8 +184,7 @@ function ThemeProviderWrapper() {
     userId: user?.uid,
     profile: !!profile,
     profileComplete: profile?.profileComplete,
-    currentPath: location.pathname,
-    mapsLoaded
+    currentPath: location.pathname
   });
 
   return (

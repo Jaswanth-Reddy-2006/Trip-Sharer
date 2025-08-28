@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
+  InputAdornment,
   TextField,
   Button,
   Box,
@@ -14,16 +15,25 @@ import {
   Stack,
   Divider,
   Chip,
-  Autocomplete,
-  IconButton,
-  InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   useTheme,
   useMediaQuery,
-  alpha
+  alpha,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Tooltip
 } from "@mui/material";
 import {
   LocationOn,
@@ -31,11 +41,10 @@ import {
   DirectionsCar,
   TwoWheeler,
   Person,
-  RouteIcon,
+  Route,
   CalendarToday,
   AccessTime,
   AccountCircle,
-  Map as MapIcon,
   Info,
   CheckCircle,
   Phone,
@@ -44,7 +53,11 @@ import {
   DriveEta,
   Receipt,
   Navigation,
-  LocalGasStation
+  LocalGasStation,
+  Warning,
+  Timeline,
+  TrendingFlat,
+  ExpandMore
 } from "@mui/icons-material";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -59,27 +72,22 @@ import {
   getDocs
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { useJsApiLoader } from "@react-google-maps/api";
-import ModalMapPicker from "./ModalMapPicker";
+import {
+  getRouteById,
+  getAvailablePickupStops,
+  getAvailableDropStops,
+  calculateDistanceBetweenStops,
+  createDirectRoute
+} from "./routesData";
 
-// Hyderabad locations for autocomplete
-const hyderabadLocations = [
-  "Nagole", "Uppal", "Secunderabad", "Hitech City", "Gachibowli",
-  "Madhapur", "Kondapur", "Miyapur", "Kukatpally", "JNTU",
-  "Ameerpet", "Begumpet", "Jubilee Hills", "Banjara Hills", "Mehdipatnam",
-  "Tolichowki", "Golconda", "Charminar", "Abids", "Nampally",
-  "Koti", "Malakpet", "Dilsukhnagar", "LB Nagar", "Vanasthalipuram",
-  "Kompally", "Bachupally", "Nizampet", "Madinaguda", "Lingampally"
-];
-
-const PRICE_PER_KM = 2.5; // ₹2.5 per kilometer
+const PRICE_PER_KM = 3; // ₹3 per kilometer
 
 export default function BookTrip({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
+
   const [trip, setTrip] = useState(null);
   const [tripOwner, setTripOwner] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -87,93 +95,178 @@ export default function BookTrip({ user }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(""); // For debugging
 
   // Booking form state
   const [bookingForm, setBookingForm] = useState({
     seats: "1",
     pickupLocation: "",
     dropLocation: "",
-    pickupCoordinates: null,
-    dropCoordinates: null,
-    isPartialTrip: false
   });
 
-  const [mapModalOpen, setMapModalOpen] = useState(false);
-  const [mapType, setMapType] = useState("");
+  const [availablePickupStops, setAvailablePickupStops] = useState([]);
+  const [availableDropStops, setAvailableDropStops] = useState([]);
   const [calculatedDistance, setCalculatedDistance] = useState(null);
   const [estimatedFare, setEstimatedFare] = useState(null);
-  const [isOnRoute, setIsOnRoute] = useState({ pickup: false, drop: false });
-
-  // Google Maps API
-  const { isLoaded: mapsLoaded } = useJsApiLoader({
-    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "",
-    libraries: ["places"]
-  });
 
   useEffect(() => {
+    console.log("🔍 BookTrip: Loading trip data for ID:", id);
     if (!id) return;
     loadTripData();
   }, [id]);
 
-  // Calculate distance and fare when coordinates change
+  // ✅ ENHANCED: Better pickup stops loading with debugging
   useEffect(() => {
-    if (bookingForm.pickupCoordinates && bookingForm.dropCoordinates && 
-        trip?.startCoordinates && trip?.endCoordinates && 
-        window.google && mapsLoaded) {
-      
-      const service = new window.google.maps.DistanceMatrixService();
-      
-      // Calculate user's journey distance
-      service.getDistanceMatrix({
-        origins: [bookingForm.pickupCoordinates],
-        destinations: [bookingForm.dropCoordinates],
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        unitSystem: window.google.maps.UnitSystem.METRIC,
-      }, (response, status) => {
-        if (status === window.google.maps.DistanceMatrixStatus.OK) {
-          const element = response.rows[0].elements[0];
-          if (element.status === "OK") {
-            const distance = element.distance.value / 1000; // Convert to km
-            const roundedDistance = parseFloat(distance.toFixed(1));
-            setCalculatedDistance(roundedDistance);
-            
-            // Calculate fare based on distance
-            const fare = roundedDistance * PRICE_PER_KM;
-            setEstimatedFare(fare.toFixed(2));
-          }
-        }
-      });
+    console.log("🚌 BookTrip: Loading pickup stops for trip:", trip?.id);
+    
+    if (!trip) {
+      console.log("❌ No trip data available");
+      setDebugInfo("No trip data available");
+      return;
+    }
 
-      // Check if pickup/drop are on the original route
-      const checkRouteAlignment = () => {
-        const isPickupSameAsStart = bookingForm.pickupLocation === trip.startLocation;
-        const isDropSameAsEnd = bookingForm.dropLocation === trip.endLocation;
-        setIsOnRoute({
-          pickup: isPickupSameAsStart,
-          drop: isDropSameAsEnd
-        });
+    console.log("Trip data:", {
+      id: trip.id,
+      routeId: trip.routeId,
+      startLocation: trip.startLocation,
+      endLocation: trip.endLocation,
+      totalStops: trip.totalStops,
+      isDirectRoute: trip.isDirectRoute
+    });
+
+    let routeForPickup = null;
+
+    if (trip.routeId) {
+      // Try to get existing route
+      routeForPickup = getRouteById(trip.routeId);
+      console.log("📍 Retrieved route by ID:", routeForPickup);
+    }
+
+    if (!routeForPickup && trip.isDirectRoute) {
+      // Create direct route from trip data
+      console.log("🛤️ Creating direct route from trip data");
+      routeForPickup = createDirectRoute(
+        trip.startLocation,
+        trip.endLocation,
+        trip.intermediateStops || []
+      );
+      console.log("✅ Created direct route:", routeForPickup);
+    }
+
+    if (!routeForPickup && trip.totalStops && trip.totalStops.length >= 2) {
+      // Fallback: create route from totalStops
+      console.log("🔧 Fallback: creating route from totalStops");
+      routeForPickup = {
+        route_id: `fallback_${trip.id}`,
+        route_name: `${trip.startLocation} to ${trip.endLocation}`,
+        total_stops: trip.totalStops,
+        distance_km: trip.estimatedDistance || 10,
+        from: trip.startLocation,
+        to: trip.endLocation
       };
-      checkRouteAlignment();
+      console.log("✅ Created fallback route:", routeForPickup);
     }
-  }, [bookingForm.pickupCoordinates, bookingForm.dropCoordinates, trip, mapsLoaded]);
 
-  // Check if booking is partial
-  useEffect(() => {
-    if (trip) {
-      const isPartial = 
-        bookingForm.pickupLocation !== trip.startLocation ||
-        bookingForm.dropLocation !== trip.endLocation;
-      setBookingForm(prev => ({
-        ...prev,
-        isPartialTrip: isPartial
-      }));
+    if (routeForPickup) {
+      const pickupStops = getAvailablePickupStops(routeForPickup.route_id);
+      console.log("✅ Available pickup stops:", pickupStops);
+      setAvailablePickupStops(pickupStops);
+      setDebugInfo(`Found ${pickupStops.length} pickup stops: ${pickupStops.join(', ')}`);
+    } else {
+      console.log("❌ Could not determine route for pickup stops");
+      setAvailablePickupStops([]);
+      setDebugInfo("Could not determine route - missing routeId and totalStops");
     }
-  }, [bookingForm.pickupLocation, bookingForm.dropLocation, trip]);
+  }, [trip]);
+
+  // ✅ ENHANCED: Better drop stops loading
+  useEffect(() => {
+    console.log("🏁 BookTrip: Loading drop stops for pickup:", bookingForm.pickupLocation);
+    
+    if (!trip || !bookingForm.pickupLocation) {
+      setAvailableDropStops([]);
+      return;
+    }
+
+    let routeForDrop = null;
+
+    if (trip.routeId) {
+      routeForDrop = getRouteById(trip.routeId);
+    }
+
+    if (!routeForDrop && trip.isDirectRoute) {
+      routeForDrop = createDirectRoute(
+        trip.startLocation,
+        trip.endLocation,
+        trip.intermediateStops || []
+      );
+    }
+
+    if (!routeForDrop && trip.totalStops && trip.totalStops.length >= 2) {
+      routeForDrop = {
+        route_id: `fallback_${trip.id}`,
+        route_name: `${trip.startLocation} to ${trip.endLocation}`,
+        total_stops: trip.totalStops,
+        distance_km: trip.estimatedDistance || 10
+      };
+    }
+
+    if (routeForDrop) {
+      const dropStops = getAvailableDropStops(routeForDrop.route_id, bookingForm.pickupLocation);
+      console.log("✅ Available drop stops:", dropStops);
+      setAvailableDropStops(dropStops);
+    } else {
+      console.log("❌ Could not determine route for drop stops");
+      setAvailableDropStops([]);
+    }
+  }, [trip, bookingForm.pickupLocation]);
+
+  // Calculate distance and fare when pickup/drop changes
+  useEffect(() => {
+    if (trip && bookingForm.pickupLocation && bookingForm.dropLocation) {
+      console.log("📏 Calculating distance and fare");
+      
+      let routeForCalculation = null;
+      
+      if (trip.routeId) {
+        routeForCalculation = getRouteById(trip.routeId);
+      }
+      
+      if (!routeForCalculation && trip.totalStops && trip.totalStops.length >= 2) {
+        routeForCalculation = {
+          route_id: `calc_${trip.id}`,
+          total_stops: trip.totalStops,
+          distance_km: trip.estimatedDistance || 10
+        };
+      }
+      
+      if (routeForCalculation) {
+        const distance = calculateDistanceBetweenStops(
+          routeForCalculation.route_id,
+          bookingForm.pickupLocation,
+          bookingForm.dropLocation
+        );
+        console.log("✅ Calculated distance:", distance, "km");
+        setCalculatedDistance(distance);
+        setEstimatedFare(distance > 0 ? (distance * PRICE_PER_KM).toFixed(2) : null);
+      } else {
+        console.log("❌ Could not calculate distance - no route available");
+        setCalculatedDistance(null);
+        setEstimatedFare(null);
+      }
+    } else {
+      setCalculatedDistance(null);
+      setEstimatedFare(null);
+    }
+  }, [trip, bookingForm.pickupLocation, bookingForm.dropLocation]);
 
   const loadTripData = async () => {
     setLoading(true);
     setError("");
+    
     try {
+      console.log("📥 Loading trip data for ID:", id);
+      
       // Load trip details
       const tripSnap = await getDoc(doc(db, "trips", id));
       if (!tripSnap.exists()) {
@@ -182,12 +275,14 @@ export default function BookTrip({ user }) {
       }
 
       const tripData = { id: tripSnap.id, ...tripSnap.data() };
+      console.log("✅ Trip data loaded:", tripData);
       setTrip(tripData);
-      
+
       // Load trip owner details
       const ownerSnap = await getDoc(doc(db, "users", tripData.uploaderId));
       if (ownerSnap.exists()) {
         setTripOwner(ownerSnap.data());
+        console.log("✅ Trip owner data loaded");
       }
 
       // Check if trip is still available
@@ -199,7 +294,7 @@ export default function BookTrip({ user }) {
       const bookingsSnap = await getDocs(bookingsQuery);
       
       if (tripData.vehicleType === "Car" && tripData.seatsAvailable) {
-        const bookedSeats = bookingsSnap.docs.reduce((sum, doc) => 
+        const bookedSeats = bookingsSnap.docs.reduce((sum, doc) =>
           sum + (doc.data().bookingSeats || 0), 0
         );
         const availableSeats = tripData.seatsAvailable - bookedSeats;
@@ -208,51 +303,29 @@ export default function BookTrip({ user }) {
           return;
         }
       }
-
-      // Initialize with full trip by default
-      setBookingForm(prev => ({
-        ...prev,
-        pickupLocation: tripData.startLocation,
-        dropLocation: tripData.endLocation,
-        pickupCoordinates: tripData.startCoordinates || null,
-        dropCoordinates: tripData.endCoordinates || null
-      }));
       
     } catch (err) {
       setError("Failed to load trip details");
-      console.error(err);
+      console.error("❌ Error loading trip:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleInputChange = (field, value) => {
+    console.log(`📝 Form change: ${field} = ${value}`);
     setBookingForm(prev => ({
       ...prev,
       [field]: value
     }));
-  };
 
-  const openMapPicker = (type) => {
-    setMapType(type);
-    setMapModalOpen(true);
-  };
-
-  const handleMapSelection = (locationData) => {
-    if (mapType === "pickup") {
+    // Reset drop location if pickup changes
+    if (field === 'pickupLocation') {
       setBookingForm(prev => ({
         ...prev,
-        pickupLocation: locationData.address,
-        pickupCoordinates: { lat: locationData.lat, lng: locationData.lng }
-      }));
-    } else {
-      setBookingForm(prev => ({
-        ...prev,
-        dropLocation: locationData.address,
-        dropCoordinates: { lat: locationData.lat, lng: locationData.lng }
+        dropLocation: ""
       }));
     }
-    setMapModalOpen(false);
   };
 
   const handleBookingConfirmation = () => {
@@ -262,8 +335,14 @@ export default function BookTrip({ user }) {
     }
 
     if (!trip) return;
+
     if (!bookingForm.pickupLocation || !bookingForm.dropLocation) {
       setError("Please select both pickup and drop locations.");
+      return;
+    }
+
+    if (!calculatedDistance || calculatedDistance <= 0) {
+      setError("Invalid route segment selected.");
       return;
     }
 
@@ -280,10 +359,10 @@ export default function BookTrip({ user }) {
     setSubmitting(true);
     setError("");
     setConfirmDialogOpen(false);
-    
+
     try {
       const seatCount = parseInt(bookingForm.seats);
-      
+
       // Create booking
       const bookingData = {
         tripId: trip.id,
@@ -291,9 +370,7 @@ export default function BookTrip({ user }) {
         bookingSeats: seatCount,
         pickupLocation: bookingForm.pickupLocation,
         dropLocation: bookingForm.dropLocation,
-        pickupCoordinates: bookingForm.pickupCoordinates,
-        dropCoordinates: bookingForm.dropCoordinates,
-        isPartialTrip: bookingForm.isPartialTrip,
+        routeId: trip.routeId,
         estimatedDistance: calculatedDistance,
         estimatedFare: estimatedFare ? parseFloat(estimatedFare) : null,
         bookedAt: serverTimestamp(),
@@ -325,7 +402,7 @@ export default function BookTrip({ user }) {
 
       setSuccess("Booking successful! You can now contact the driver.");
       setTimeout(() => navigate("/my-bookings"), 3000);
-      
+
     } catch (e) {
       console.error("Booking error:", e);
       setError("Booking failed, please try again.");
@@ -334,25 +411,66 @@ export default function BookTrip({ user }) {
     }
   };
 
+  const formatDate = (date) => {
+    if (!date) return "N/A";
+    try {
+      const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+      return dt.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        weekday: "short"
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Invalid Date";
+    }
+  };
+
+  const formatTime = (date) => {
+    if (!date) return "N/A";
+    try {
+      const dt = date.seconds ? new Date(date.seconds * 1000) : new Date(date);
+      return dt.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch (error) {
+      console.error("Error formatting time:", error);
+      return "Invalid Time";
+    }
+  };
+
+  const getVehicleIcon = () => {
+    switch (trip?.vehicleType) {
+      case "Car": return <DirectionsCar />;
+      case "Bike":
+      case "Scooter": return <TwoWheeler />;
+      default: return <DirectionsCar />;
+    }
+  };
+
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-          <CircularProgress />
-        </Box>
+      <Container maxWidth="md" sx={{ py: 8, textAlign: "center" }}>
+        <CircularProgress size={60} />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Loading trip details...
+        </Typography>
       </Container>
     );
   }
 
   if (!trip) {
     return (
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>
+      <Container maxWidth="md" sx={{ py: 4 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
           {error || "Trip not found."}
         </Alert>
         <Button
-          variant="contained"
           onClick={() => navigate("/trips")}
+          variant="contained"
           sx={{ mt: 2, borderRadius: 2 }}
         >
           Back to Trips
@@ -367,196 +485,171 @@ export default function BookTrip({ user }) {
       : new Date(trip.date)
     : null;
 
-  const getVehicleIcon = () => {
-    switch (trip.vehicleType) {
-      case "Car": return <DirectionsCar />;
-      case "Bike":
-      case "Scooter": return <TwoWheeler />;
-      default: return <DirectionsCar />;
-    }
-  };
-
   return (
-    <>
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
-        {/* Header */}
-        <Box mb={{ xs: 3, md: 4 }}>
-          <Typography 
-            variant={isMobile ? "h4" : "h3"} 
-            component="h1" 
-            gutterBottom
-            sx={{ fontWeight: 700 }}
-          >
-            Book This Trip
-          </Typography>
-          <Typography 
-            variant="body1" 
-            color="text.secondary"
-            sx={{ fontSize: { xs: '0.9rem', md: '1rem' } }}
-          >
-            Choose your pickup and drop points, then confirm your booking
-          </Typography>
-        </Box>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Paper sx={{ p: 4, mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Typography variant="h3" gutterBottom fontWeight="bold">
+          Book This Trip
+        </Typography>
+        <Typography variant="h6" sx={{ opacity: 0.9 }}>
+          Select your pickup and drop points along the route
+        </Typography>
+      </Paper>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+      <Grid container spacing={4}>
+        {/* Left Column - Trip Info */}
+        <Grid item xs={12} lg={8}>
+          
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
 
-        {success && (
-          <Alert 
-            severity="success" 
-            icon={<CheckCircle />}
-            sx={{ mb: 3, borderRadius: 2 }}
-          >
-            {success}
-          </Alert>
-        )}
+          {success && (
+            <Alert severity="success" sx={{ mb: 3 }}>
+              {success}
+            </Alert>
+          )}
 
-        <Grid container spacing={{ xs: 2, md: 4 }}>
-          {/* Trip Information */}
-          <Grid item xs={12} lg={5}>
-            <Card 
-              elevation={3}
-              sx={{ 
-                borderRadius: { xs: 2, md: 3 },
-                position: { lg: 'sticky' },
-                top: { lg: 24 }
-              }}
-            >
-              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                  Trip Details
+          {/* ✅ DEBUG INFO - Remove in production */}
+          {debugInfo && (
+            <Accordion sx={{ mb: 3 }}>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Typography variant="subtitle2">Debug Information</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Typography variant="body2" component="pre">
+                  {debugInfo}
+                  {"\n\nTrip Data:"}
+                  {JSON.stringify({
+                    routeId: trip.routeId,
+                    totalStops: trip.totalStops,
+                    isDirectRoute: trip.isDirectRoute,
+                    availablePickups: availablePickupStops.length,
+                    availableDrops: availableDropStops.length
+                  }, null, 2)}
                 </Typography>
+              </AccordionDetails>
+            </Accordion>
+          )}
 
+          {/* Trip Information */}
+          <Card sx={{ mb: 4 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Info color="primary" />
+                Trip Details
+              </Typography>
+
+              <Grid container spacing={3}>
                 {/* Vehicle Info */}
-                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-                  {getVehicleIcon()}
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {trip.vehicleType} - {trip.vehicleNumber}
-                  </Typography>
-                </Stack>
-
-                {trip.vehicleModel && (
-                  <Typography variant="body2" color="text.secondary" mb={2}>
-                    {trip.vehicleModel}
-                  </Typography>
-                )}
-
-                <Divider sx={{ my: 2 }} />
-
-                {/* Original Route */}
-                <Box mb={2}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    ORIGINAL TRIP ROUTE
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <LocationOn color="primary" fontSize="small" />
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {trip.startLocation}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Navigation color="secondary" fontSize="small" />
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {trip.endLocation}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Box>
-
-                {/* Time */}
-                <Box mb={2}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    DEPARTURE
-                  </Typography>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <CalendarToday fontSize="small" />
-                      <Typography variant="body2">
-                        {tripDate ? tripDate.toLocaleDateString() : "N/A"}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <AccessTime fontSize="small" />
-                      <Typography variant="body2">
-                        {tripDate ? tripDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Box>
-
-                {/* Driver */}
-                <Box mb={2}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    POSTED BY
-                  </Typography>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <AccountCircle fontSize="small" />
+                <Grid item xs={12} md={6}>
+                  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+                    {getVehicleIcon()}
                     <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {trip.uploaderName || "Driver"}
+                      <Typography variant="h6">
+                        {trip.vehicleType} - {trip.vehicleNumber}
                       </Typography>
-                      {trip.uploaderUsername && (
-                        <Typography variant="caption" color="text.secondary">
-                          @{trip.uploaderUsername}
-                        </Typography>
+                      {trip.vehicleModel && (
+                        <Chip label={trip.vehicleModel} size="small" variant="outlined" />
                       )}
                     </Box>
                   </Stack>
-                </Box>
+                </Grid>
 
-                {/* Seats */}
-                {trip.vehicleType === "Car" && trip.seatsAvailable && (
-                  <Box mb={2}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      AVAILABLE SEATS
+                {/* Original Route */}
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    FULL ROUTE
+                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Chip label={trip.startLocation} color="success" size="small" />
+                    <TrendingFlat />
+                    <Chip label={trip.endLocation} color="error" size="small" />
+                  </Stack>
+                  
+                  {trip.totalStops && trip.totalStops.length > 2 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Route: {trip.totalStops.join(' → ')}
+                      </Typography>
+                    </Box>
+                  )}
+                </Grid>
+
+                {/* Trip Details Grid */}
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    DEPARTURE
+                  </Typography>
+                  <Typography variant="body1">
+                    {formatDate(trip.date)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatTime(trip.date)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    DRIVER
+                  </Typography>
+                  <Typography variant="body1">
+                    {trip.uploaderName || "Driver"}
+                  </Typography>
+                  {trip.uploaderUsername && (
+                    <Typography variant="body2" color="text.secondary">
+                      @{trip.uploaderUsername}
                     </Typography>
-                    <Chip
-                      icon={<Person />}
-                      label={`${trip.seatsAvailable} seats available`}
-                      color="success"
-                      variant="outlined"
-                    />
-                  </Box>
-                )}
+                  )}
+                </Grid>
 
-                {/* Distance */}
-                {trip.estimatedDistance && (
-                  <Box>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      TRIP DISTANCE
-                    </Typography>
-                    <Chip
-                      icon={<DriveEta />}
-                      label={`${trip.estimatedDistance} km`}
-                      color="info"
-                      variant="outlined"
-                    />
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
+                <Grid item xs={12} md={4}>
+                  {trip.vehicleType === "Car" && trip.seatsAvailable && (
+                    <>
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        AVAILABLE SEATS
+                      </Typography>
+                      <Chip 
+                        label={`${trip.seatsAvailable} seats available`}
+                        color="success"
+                        variant="outlined"
+                      />
+                    </>
+                  )}
+                  {trip.estimatedDistance && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        FULL TRIP DISTANCE
+                      </Typography>
+                      <Chip 
+                        label={`${trip.estimatedDistance} km`}
+                        color="info"
+                        variant="outlined"
+                      />
+                    </Box>
+                  )}
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
 
-          {/* Booking Form */}
-          <Grid item xs={12} lg={7}>
-            <Card 
-              elevation={2}
-              sx={{ borderRadius: { xs: 2, md: 3 } }}
-            >
-              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                  Your Booking
-                </Typography>
+          {/* ✅ ENHANCED Booking Form */}
+          <Card sx={{ mb: 4 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Navigation color="primary" />
+                Your Booking
+              </Typography>
 
-                <Stack spacing={3}>
-                  {/* Seats Selection */}
-                  {trip.vehicleType === "Car" && (
+              <Grid container spacing={3}>
+                {/* Seats Selection - Only for Cars */}
+                {trip.vehicleType === "Car" && (
+                  <Grid item xs={12} md={6}>
                     <TextField
-                      label="Number of Seats"
+                      label="Number of Seats *"
                       type="number"
                       value={bookingForm.seats}
                       onChange={(e) => handleInputChange('seats', e.target.value)}
@@ -575,318 +668,245 @@ export default function BookTrip({ user }) {
                       }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
-                  )}
+                  </Grid>
+                )}
 
-                  {/* Pickup Location */}
-                  <Box>
-                    <Stack 
-                      direction={{ xs: 'column', sm: 'row' }} 
-                      spacing={1} 
-                      alignItems={{ sm: 'flex-end' }}
-                    >
-                      <Autocomplete
-                        value={bookingForm.pickupLocation}
-                        onChange={(event, newValue) => handleInputChange('pickupLocation', newValue || '')}
-                        options={[trip.startLocation, ...hyderabadLocations]}
-                        freeSolo
-                        fullWidth
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Pickup Location *"
-                            InputProps={{
-                              ...params.InputProps,
-                              startAdornment: (
-                                <InputAdornment position="start">
-                                  <LocationOn />
-                                </InputAdornment>
-                              ),
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-                        )}
-                      />
-                      {mapsLoaded && (
-                        <IconButton
-                          onClick={() => openMapPicker('pickup')}
-                          sx={{
-                            bgcolor: 'primary.light',
-                            color: 'white',
-                            '&:hover': { bgcolor: 'primary.main' },
-                            borderRadius: 2,
-                            minWidth: 48,
-                            height: 48
-                          }}
-                        >
-                          <MapIcon />
-                        </IconButton>
-                      )}
-                    </Stack>
-                    {bookingForm.isPartialTrip && !isOnRoute.pickup && (
-                      <Alert severity="warning" sx={{ mt: 1, borderRadius: 2 }}>
-                        ⚠️ This location may not be on the original route
-                      </Alert>
-                    )}
-                  </Box>
-
-                  {/* Drop Location */}
-                  <Box>
-                    <Stack 
-                      direction={{ xs: 'column', sm: 'row' }} 
-                      spacing={1} 
-                      alignItems={{ sm: 'flex-end' }}
-                    >
-                      <Autocomplete
-                        value={bookingForm.dropLocation}
-                        onChange={(event, newValue) => handleInputChange('dropLocation', newValue || '')}
-                        options={[trip.endLocation, ...hyderabadLocations]}
-                        freeSolo
-                        fullWidth
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Drop Location *"
-                            InputProps={{
-                              ...params.InputProps,
-                              startAdornment: (
-                                <InputAdornment position="start">
-                                  <Navigation />
-                                </InputAdornment>
-                              ),
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-                        )}
-                      />
-                      {mapsLoaded && (
-                        <IconButton
-                          onClick={() => openMapPicker('drop')}
-                          sx={{
-                            bgcolor: 'secondary.light',
-                            color: 'white',
-                            '&:hover': { bgcolor: 'secondary.main' },
-                            borderRadius: 2,
-                            minWidth: 48,
-                            height: 48
-                          }}
-                        >
-                          <MapIcon />
-                        </IconButton>
-                      )}
-                    </Stack>
-                    {bookingForm.isPartialTrip && !isOnRoute.drop && (
-                      <Alert severity="warning" sx={{ mt: 1, borderRadius: 2 }}>
-                        ⚠️ This location may not be on the original route
-                      </Alert>
-                    )}
-                  </Box>
-
-                  {/* Partial Trip Notice */}
-                  {bookingForm.isPartialTrip && (
-                    <Alert 
-                      severity="info" 
-                      icon={<Info />}
+                {/* ✅ FIXED Pickup Location */}
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Pickup Location *</InputLabel>
+                    <Select
+                      value={bookingForm.pickupLocation}
+                      onChange={(e) => handleInputChange('pickupLocation', e.target.value)}
+                      label="Pickup Location *"
+                      disabled={availablePickupStops.length === 0}
                       sx={{ borderRadius: 2 }}
                     >
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        Partial Trip Booking
+                      <MenuItem value="">
+                        <em>Select pickup point</em>
+                      </MenuItem>
+                      {availablePickupStops.map((stop) => (
+                        <MenuItem key={stop} value={stop}>
+                          {stop}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {availablePickupStops.length === 0 && (
+                      <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                        No pickup stops available. Please contact support.
                       </Typography>
-                      <Typography variant="body2">
-                        You're booking a part of the original trip. Make sure your locations are accessible from the driver's route.
-                      </Typography>
-                    </Alert>
-                  )}
+                    )}
+                  </FormControl>
+                </Grid>
 
-                  {/* Distance and Fare Display */}
-                  {calculatedDistance && estimatedFare && (
-                    <Paper
-                      elevation={1}
-                      sx={{
-                        p: 2,
-                        borderRadius: 2,
-                        bgcolor: alpha(theme.palette.success.main, 0.05),
-                        border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`
-                      }}
+                {/* ✅ FIXED Drop Location */}
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Drop Location *</InputLabel>
+                    <Select
+                      value={bookingForm.dropLocation}
+                      onChange={(e) => handleInputChange('dropLocation', e.target.value)}
+                      label="Drop Location *"
+                      disabled={!bookingForm.pickupLocation || availableDropStops.length === 0}
+                      sx={{ borderRadius: 2 }}
                     >
-                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
-                        Journey Summary
+                      <MenuItem value="">
+                        <em>Select drop point</em>
+                      </MenuItem>
+                      {availableDropStops.map((stop) => (
+                        <MenuItem key={stop} value={stop}>
+                          {stop}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {!bookingForm.pickupLocation && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                        Select pickup location first
                       </Typography>
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <DriveEta color="primary" fontSize="small" />
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                Distance
-                              </Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                {calculatedDistance} km
-                              </Typography>
-                            </Box>
-                          </Stack>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Receipt color="success" fontSize="small" />
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                Estimated Fare
-                              </Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 600, color: 'success.main' }}>
-                                ₹{estimatedFare}
-                              </Typography>
-                            </Box>
-                          </Stack>
-                        </Grid>
+                    )}
+                  </FormControl>
+                </Grid>
+              </Grid>
+
+              {/* Distance and Fare Display */}
+              {calculatedDistance && estimatedFare && (
+                <Card sx={{ mt: 3, bgcolor: alpha(theme.palette.success.main, 0.1) }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Journey Summary
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Distance
+                        </Typography>
+                        <Typography variant="h6">
+                          {calculatedDistance} km
+                        </Typography>
                       </Grid>
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                        * Based on ₹{PRICE_PER_KM}/km. Final fare may vary.
-                      </Typography>
-                    </Paper>
-                  )}
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Estimated Fare
+                        </Typography>
+                        <Typography variant="h6" color="success.main">
+                          ₹{estimatedFare}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+                      * Based on ₹{PRICE_PER_KM}/km. Final fare may be discussed with driver.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
 
-                  {/* Book Button */}
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={handleBookingConfirmation}
-                    disabled={submitting || !bookingForm.pickupLocation || !bookingForm.dropLocation}
-                    sx={{
-                      py: 1.5,
-                      borderRadius: 3,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                      '&:hover': {
-                        background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
-                        transform: 'translateY(-2px)'
-                      },
-                      '&:disabled': {
-                        background: theme.palette.action.disabledBackground
-                      },
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    {submitting ? "Booking..." : "Confirm Booking"}
-                  </Button>
+              {/* Book Button */}
+              <Button
+                onClick={handleBookingConfirmation}
+                variant="contained"
+                size="large"
+                disabled={submitting || !bookingForm.pickupLocation || !bookingForm.dropLocation}
+                startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : <CheckCircle />}
+                fullWidth
+                sx={{
+                  mt: 3,
+                  py: 2,
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
+                  borderRadius: 3,
+                  background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                  '&:hover': {
+                    background: 'linear-gradient(45deg, #5a67d8 30%, #6b46c1 90%)',
+                  }
+                }}
+              >
+                {submitting ? "Booking..." : "Confirm Booking"}
+              </Button>
 
-                  {/* Contact Options */}
-                  {success && (
-                    <Stack spacing={2}>
-                      <Divider />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Contact Driver
-                      </Typography>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button
-                          variant="outlined"
-                          startIcon={<Chat />}
-                          onClick={() => {
-                            navigate(`/chat/${trip.uploaderId}`, {
-                              state: {
-                                user: {
-                                  uid: trip.uploaderId,
-                                  name: trip.uploaderName,
-                                  tripId: trip.id
-                                },
+              {/* Contact Options - Only show after successful booking */}
+              {success && (
+                <Card sx={{ mt: 3, bgcolor: alpha(theme.palette.info.main, 0.1) }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Contact Driver
+                    </Typography>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                      <Button
+                        onClick={() => {
+                          navigate(`/chat/${trip.uploaderId}`, {
+                            state: {
+                              user: {
+                                uid: trip.uploaderId,
+                                name: trip.uploaderName,
+                                tripId: trip.id
                               },
-                            });
-                          }}
+                            },
+                          });
+                        }}
+                        variant="outlined"
+                        startIcon={<Chat />}
+                        fullWidth
+                        sx={{ borderRadius: 2 }}
+                      >
+                        Chat with {trip.uploaderName}
+                      </Button>
+                      {tripOwner?.phone && (
+                        <Button
+                          onClick={() => window.open(`tel:${tripOwner.phone}`, '_self')}
+                          variant="outlined"
+                          startIcon={<Phone />}
                           fullWidth
                           sx={{ borderRadius: 2 }}
                         >
-                          Chat with {trip.uploaderName}
+                          Call Driver
                         </Button>
-
-                        {tripOwner?.phone && (
-                          <Button
-                            variant="outlined"
-                            startIcon={<Phone />}
-                            onClick={() => window.open(`tel:${tripOwner.phone}`, '_self')}
-                            fullWidth
-                            sx={{ borderRadius: 2 }}
-                          >
-                            Call Driver
-                          </Button>
-                        )}
-                      </Stack>
+                      )}
                     </Stack>
-                  )}
+                  </CardContent>
+                </Card>
+              )}
+            </CardContent>
+          </Card>
 
-                  <Button
-                    variant="text"
-                    onClick={() => navigate("/trips")}
-                    fullWidth
-                    sx={{ borderRadius: 2 }}
-                  >
-                    Back to Trips
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+          {/* Back Button */}
+          <Button
+            onClick={() => navigate("/trips")}
+            variant="outlined"
+            fullWidth
+            sx={{ mt: 2, borderRadius: 2 }}
+          >
+            Back to Trips
+          </Button>
+
         </Grid>
 
-        {/* Additional Information */}
-        <Card 
-          elevation={1}
-          sx={{ 
-            mt: 4, 
-            borderRadius: { xs: 2, md: 3 },
-            bgcolor: alpha(theme.palette.primary.main, 0.02)
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-              How Booking Works
+        {/* Right Column - How it Works */}
+        <Grid item xs={12} lg={4}>
+          <Paper sx={{ p: 3, position: 'sticky', top: 20 }}>
+            <Typography variant="h6" gutterBottom>
+              How Route-Based Booking Works
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={4}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <LocationOn color="primary" />
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      Flexible Pickup & Drop
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Choose any points along or near the driver's route
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Verified color="success" />
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      Verified Drivers
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      All drivers are verified with phone numbers and licenses
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Chat color="info" />
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      Easy Communication
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Chat or call drivers directly through the app
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      </Container>
+
+            <List>
+              <ListItem sx={{ pl: 0 }}>
+                <ListItemIcon>
+                  <Timeline color="primary" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Select Route Segment"
+                  secondary="Choose any pickup and drop points along the driver's route"
+                />
+              </ListItem>
+              
+              <ListItem sx={{ pl: 0 }}>
+                <ListItemIcon>
+                  <Verified color="primary" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Verified Drivers"
+                  secondary="All drivers are verified with phone numbers and licenses"
+                />
+              </ListItem>
+              
+              <ListItem sx={{ pl: 0 }}>
+                <ListItemIcon>
+                  <Chat color="primary" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Easy Communication"
+                  secondary="Chat or call drivers directly after booking"
+                />
+              </ListItem>
+            </List>
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="subtitle1" gutterBottom>
+              💡 Booking Tips
+            </Typography>
+            <List dense>
+              <ListItem sx={{ pl: 0 }}>
+                <Typography variant="body2">
+                  • Book at least 30 minutes before departure
+                </Typography>
+              </ListItem>
+              <ListItem sx={{ pl: 0 }}>
+                <Typography variant="body2">
+                  • Be at pickup location 5 minutes early
+                </Typography>
+              </ListItem>
+              <ListItem sx={{ pl: 0 }}>
+                <Typography variant="body2">
+                  • Save driver's contact after booking
+                </Typography>
+              </ListItem>
+            </List>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* Confirmation Dialog */}
-      <Dialog
+      <Dialog 
         open={confirmDialogOpen}
         onClose={() => !submitting && setConfirmDialogOpen(false)}
         maxWidth="sm"
@@ -895,29 +915,36 @@ export default function BookTrip({ user }) {
       >
         <DialogTitle>Confirm Your Booking</DialogTitle>
         <DialogContent>
-          <Typography gutterBottom>
+          <Typography variant="body1" paragraph>
             Are you sure you want to book this trip?
           </Typography>
-          
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 2 }}>
-            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+          <Box sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1), p: 2, borderRadius: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
               Booking Summary:
             </Typography>
-            <Typography variant="body2">• Pickup: {bookingForm.pickupLocation}</Typography>
-            <Typography variant="body2">• Drop: {bookingForm.dropLocation}</Typography>
-            <Typography variant="body2">• Seats: {bookingForm.seats}</Typography>
+            <Typography variant="body2">
+              • Route: {trip.startLocation} → {trip.endLocation}
+            </Typography>
+            <Typography variant="body2">
+              • Your Journey: {bookingForm.pickupLocation} → {bookingForm.dropLocation}
+            </Typography>
+            <Typography variant="body2">
+              • Seats: {bookingForm.seats}
+            </Typography>
             {calculatedDistance && (
-              <Typography variant="body2">• Distance: {calculatedDistance} km</Typography>
+              <Typography variant="body2">
+                • Distance: {calculatedDistance} km
+              </Typography>
             )}
             {estimatedFare && (
-              <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+              <Typography variant="body2">
                 • Estimated Fare: ₹{estimatedFare}
               </Typography>
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button 
+        <DialogActions>
+          <Button
             onClick={() => setConfirmDialogOpen(false)}
             disabled={submitting}
             sx={{ borderRadius: 2 }}
@@ -928,24 +955,13 @@ export default function BookTrip({ user }) {
             onClick={handleBooking}
             variant="contained"
             disabled={submitting}
-            startIcon={submitting ? <CircularProgress size={16} /> : <CheckCircle />}
+            startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : null}
             sx={{ borderRadius: 2 }}
           >
             {submitting ? "Booking..." : "Confirm"}
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Map Modal */}
-      {mapsLoaded && (
-        <ModalMapPicker
-          apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
-          open={mapModalOpen}
-          onClose={() => setMapModalOpen(false)}
-          onSelect={handleMapSelection}
-          initialLocation={{ lat: 17.3850, lng: 78.4867 }}
-        />
-      )}
-    </>
+    </Container>
   );
 }
